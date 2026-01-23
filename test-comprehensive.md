@@ -21,7 +21,7 @@ echo "Still in dir1"
 ## Scenario 2: Directory change with file extraction in between
 
 ```typescript
-// file: dir1/config.json
+// file: config.json
 {
   "setting": "value"
 }
@@ -81,7 +81,7 @@ echo "Back in dir1/dir2"
 ## Cleanup
 
 ```bash
-cd /home/wighawag/dev/github/google/zx/ezx
-rm -rf dir1 dir2
+cd ../..
+rm -rf dir1
 echo "Cleanup complete!"
 ```
