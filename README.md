@@ -25,6 +25,17 @@ pwd
 
 ### 2. File Extraction
 
+**Note:** zx executes all code blocks in markdown files. If you have code blocks that are for documentation only (examples to show users, not to run or write as files), add the `no-eval` flag to prevent execution:
+
+```markdown
+```typescript no-eval
+interface User {
+  name: string;
+  age: number;
+}
+```⁠
+```
+
 Extract code blocks to files using the info string syntax on the code fence. The file directive is specified after the language identifier using `file:` or `file=`. The file path is always relative to the original working directory (not affected by `# set the current directory`).
 
 **JSON:**
