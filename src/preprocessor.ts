@@ -5,6 +5,7 @@ export interface CodeBlock {
 	content: string;
 	startLine: number;
 	endLine: number;
+	filePath?: string; // File path from info string: ```json file:path/to/file.json
 }
 
 export interface FileExtraction {
@@ -30,6 +31,7 @@ interface HeredocTransform {
 
 /**
  * Parse markdown and extract all code blocks with their line numbers
+ * Also extracts file path from info string if present (e.g., ```json file:path/to/file.json)
  */
 function parseCodeBlocks(markdown: string): CodeBlock[] {
 	const codeBlocks: CodeBlock[] = [];
@@ -42,12 +44,15 @@ function parseCodeBlocks(markdown: string): CodeBlock[] {
 		const line = lines[i];
 
 		// Check for code block start
-		if (line.match(/^```(\w+)?/)) {
+		if (line.match(/^```/)) {
 			if (!inCodeBlock) {
 				// Starting a new code block
-				const languageMatch = line.match(/^```(\w+)?/);
+				// Parse language and optional file directive from info string
+				// Formats: ```json, ```json file:path, ```json file=path
+				const match = line.match(/^```(\w*)\s*(?:file[:=](\S+))?/i);
 				currentBlock = {
-					language: languageMatch?.[1] || '',
+					language: match?.[1] || '',
+					filePath: match?.[2] || undefined,
 					content: '',
 					startLine: i,
 				};
@@ -65,6 +70,7 @@ function parseCodeBlocks(markdown: string): CodeBlock[] {
 						content: currentBlock.content,
 						startLine: currentBlock.startLine,
 						endLine: i,
+						filePath: currentBlock.filePath,
 					});
 				}
 				inCodeBlock = false;
@@ -87,57 +93,6 @@ function isDirectorySetCommand(line: string): boolean {
 	return trimmed === '# set the current directory';
 }
 
-/**
- * Check if a line contains a file extraction comment
- */
-function isFileExtractionComment(line: string, commentToken: string): string | null {
-	const trimmed = line.trim();
-
-	// For HTML/XML style comments, we need to remove the closing -->
-	let searchLine = trimmed;
-	if (commentToken === '<!--') {
-		searchLine = trimmed.replace(/-->.*$/, '');
-	}
-
-	const filePattern = new RegExp(`^${escapeRegExp(commentToken)}\\s*file:\\s*(.+)$`, 'i');
-	const match = searchLine.match(filePattern);
-	if (match) {
-		return match[1].trim();
-	}
-	return null;
-}
-
-/**
- * Escape special regex characters
- */
-function escapeRegExp(string: string): string {
-	return string.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-}
-
-/**
- * Try to extract file path from a line using multiple comment patterns
- */
-function tryExtractFilePath(line: string): string | null {
-	// Common comment patterns to try, in order of preference
-	const commentPatterns = [
-		'//',        // Most common
-		'#',         // Shell/Python
-		'<!--',      // HTML/XML/Markdown
-		'--',        // SQL/Lua
-		';',         // Assembly
-	];
-
-	const trimmed = line.trim();
-
-	for (const pattern of commentPatterns) {
-		const filePath = isFileExtractionComment(trimmed, pattern);
-		if (filePath) {
-			return filePath;
-		}
-	}
-
-	return null;
-}
 
 /**
  * Preprocess markdown file
@@ -162,19 +117,14 @@ export function preprocessMarkdown(
 	// Process each code block
 	for (let i = 0; i < codeBlocks.length; i++) {
 		const block = codeBlocks[i];
-		const blockLines = block.content.split('\n');
 		const isBash = block.language === 'bash' || block.language === 'sh' || block.language === 'shell';
 
-		// Check if this is a file extraction block by trying multiple comment patterns
-		const firstLine = blockLines[0] || '';
-		const filePath = tryExtractFilePath(firstLine);
-
-		if (filePath) {
+		// Check if this is a file extraction block (file path in info string)
+		if (block.filePath) {
 			// This is a file extraction block - transform to heredoc
-			// Remove the comment line from the file content
-			const fileContent = blockLines.slice(1).join('\n').trim();
+			const fileContent = block.content.trim();
 			extractedFiles.push({
-				filePath: filePath, // Keep relative path for heredoc command
+				filePath: block.filePath,
 				content: fileContent,
 				language: block.language,
 			});
@@ -182,7 +132,7 @@ export function preprocessMarkdown(
 			// Mark this block for transformation to heredoc
 			// If we have a current directory, prepend it to the heredoc command
 			blocksToHeredoc.set(i, {
-				filePath: filePath,
+				filePath: block.filePath,
 				content: fileContent,
 				directoryPrefix: currentDirectory || undefined,
 			});
@@ -192,6 +142,7 @@ export function preprocessMarkdown(
 
 		// Check for directory set command in bash blocks
 		if (isBash) {
+			const blockLines = block.content.split('\n');
 			let justSetDirectory = false;
 
 			// First, check if this block has a directory set command
@@ -245,7 +196,7 @@ export function preprocessMarkdown(
 		const line = lines[i];
 
 		// Check if this is the start of a code block
-		if (line.match(/^```(\w+)?/)) {
+		if (line.match(/^```/)) {
 			const blockIndex = codeBlocks.findIndex((b) => b.startLine === i);
 
 			if (blockIndex !== -1) {

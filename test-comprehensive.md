@@ -20,8 +20,7 @@ echo "Still in dir1"
 
 ## Scenario 2: Directory change with file extraction in between
 
-```typescript
-// file: config.json
+```json file:config.json
 {
   "setting": "value"
 }

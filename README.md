@@ -25,30 +25,32 @@ pwd
 
 ### 2. File Extraction
 
-Extract code blocks to files using comment syntax. The file directive must be on the first line of the code block, and the file path is always relative to the original working directory (not affected by `# set the current directory`).
+Extract code blocks to files using the info string syntax on the code fence. The file directive is specified after the language identifier using `file:` or `file=`. The file path is always relative to the original working directory (not affected by `# set the current directory`).
 
-**TypeScript/JavaScript:**
-```typescript
-// file: my-project/package.json
+**JSON:**
+```json file:my-project/package.json
 {
   "name": "my-project",
   "version": "1.0.0"
 }
 ```
 
+**TypeScript/JavaScript:**
+```typescript file:my-project/index.ts
+console.log("Hello world")
+```
+
 **Bash/Shell:**
-```bash
-# file: my-project/.npmrc
+```bash file:my-project/.npmrc
 shared-workspace-lockfile=false
 ```
 
 **Markdown:**
-```markdown
-<!-- file: my-project/README.md -->
+```markdown file:my-project/README.md
 # My Project
 ```
 
-**Any language:** The file directive works with any language, including unknown languages, by trying common comment patterns (`//`, `#`, `<!--`, `--`, `;`).
+**Any language:** The file directive works with any language, including unknown languages, because it's specified in the code fence info string, not inside the code content.
 
 File extraction blocks are transformed to bash heredoc commands that execute in order with the rest of the markdown. If a directory context is active, the heredoc command will prepend `cd`:
 
@@ -136,8 +138,7 @@ cd my-app
 npm init -y
 \`\`\`
 
-\`\`\`typescript
-// file: my-app/package.json
+\`\`\`json file:my-app/package.json
 {
   "name": "my-app",
   "version": "1.0.0",
@@ -147,8 +148,7 @@ npm init -y
 }
 \`\`\`
 
-\`\`\`typescript
-// file: my-app/index.ts
+\`\`\`typescript file:my-app/index.ts
 console.log('Hello from ezx!')
 \`\`\`
 
