@@ -23,11 +23,11 @@ pwd
 
 ### 2. File Extraction
 
-Extract code blocks to files using language-specific comment syntax:
+Extract code blocks to files using comment syntax. The file directive must be on the first line of the code block, and the file path is always relative to the original working directory (not affected by `# set the current directory`).
 
 **TypeScript/JavaScript:**
 ```typescript
-// file: package.json
+// file: my-project/package.json
 {
   "name": "my-project",
   "version": "1.0.0"
@@ -36,17 +36,26 @@ Extract code blocks to files using language-specific comment syntax:
 
 **Bash/Shell:**
 ```bash
-# file: .npmrc
+# file: my-project/.npmrc
 shared-workspace-lockfile=false
 ```
 
 **Markdown:**
 ```markdown
-<!-- file: README.md -->
+<!-- file: my-project/README.md -->
 # My Project
 ```
 
-Supported languages include: typescript, javascript, js, ts, bash, sh, shell, python, ruby, go, rust, java, sql, html, xml, and more.
+**Any language:** The file directive works with any language, including unknown languages, by trying common comment patterns (`//`, `#`, `<!--`, `--`, `;`).
+
+File extraction blocks are transformed to bash heredoc commands that execute in order with the rest of the markdown:
+```bash
+cat > 'path/to/file' << 'EZXEOF'
+file content here
+EZXEOF
+```
+
+This means if a parent directory doesn't exist, the command will fail (as expected). You should create directories first using `mkdir -p` in a bash block.
 
 ## Installation
 
@@ -98,10 +107,9 @@ import { preprocessMarkdown, preprocessFile } from 'ezx'
 // Preprocess markdown content
 const { preprocessedMarkdown, extractedFiles } = preprocessMarkdown(markdown)
 
-// Preprocess markdown file with auto-extraction
-const result = preprocessFile('./script.md', { 
-  outputFiles: true,  // Write files to disk
-  cwd: process.cwd() 
+// Preprocess markdown file
+const result = preprocessFile('./script.md', {
+  cwd: process.cwd()
 })
 ```
 
@@ -120,7 +128,7 @@ npm init -y
 \`\`\`
 
 \`\`\`typescript
-// file: package.json
+// file: my-app/package.json
 {
   "name": "my-app",
   "version": "1.0.0",
@@ -131,7 +139,7 @@ npm init -y
 \`\`\`
 
 \`\`\`typescript
-// file: index.ts
+// file: my-app/index.ts
 console.log('Hello from ezx!')
 \`\`\`
 
@@ -180,12 +188,11 @@ Preprocess markdown content.
 **Parameters:**
 - `input` (string) - Markdown content
 - `options` (object)
-  - `outputFiles` (boolean) - Write extracted files to disk
-  - `cwd` (string) - Current working directory
+  - `cwd` (string) - Current working directory (default: `process.cwd()`)
 
 **Returns:** PreprocessResult
-- `preprocessedMarkdown` (string) - The preprocessed markdown
-- `extractedFiles` (FileExtraction[]) - Array of extracted files
+- `preprocessedMarkdown` (string) - The preprocessed markdown with file directive blocks transformed to bash heredocs
+- `extractedFiles` (FileExtraction[]) - Array of extracted file information (for informational purposes only)
 
 ### `preprocessFile(filePath, options)`
 
@@ -209,4 +216,4 @@ node dist/cli.js test-preprocessor.md --verbose
 
 ## License
 
-Apache-2.0
+MIT

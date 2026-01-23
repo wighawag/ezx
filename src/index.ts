@@ -54,10 +54,8 @@ export async function runMarkdown(markdown: string | Buffer, options: RunMarkdow
 		}
 
 		// Preprocess markdown with ezx enhancements
-		// Write extracted files to disk
-		const {preprocessedMarkdown, extractedFiles} = preprocessMarkdown(markdownContent, {
+		const {preprocessedMarkdown} = preprocessMarkdown(markdownContent, {
 			cwd: options.cwd || process.cwd(),
-			outputFiles: true,
 		});
 
 		// Transform markdown to JavaScript

@@ -1,5 +1,4 @@
-import {readFileSync, writeFileSync, mkdirSync} from 'fs';
-import {resolve, dirname} from 'path';
+import {readFileSync} from 'node:fs';
 
 export interface CodeBlock {
 	language: string;
@@ -17,6 +16,14 @@ export interface FileExtraction {
 export interface PreprocessResult {
 	preprocessedMarkdown: string;
 	extractedFiles: FileExtraction[];
+}
+
+/**
+ * Information about a block that will be transformed to a heredoc
+ */
+interface HeredocTransform {
+	filePath: string;
+	content: string;
 }
 
 
@@ -136,9 +143,9 @@ function tryExtractFilePath(line: string): string | null {
  */
 export function preprocessMarkdown(
 	input: string,
-	options: {outputFiles?: boolean; cwd?: string} = {},
+	options: {cwd?: string} = {},
 ): PreprocessResult {
-	const {outputFiles = false, cwd = process.cwd()} = options;
+	const {cwd = process.cwd()} = options;
 	const lines = input.split('\n');
 	const codeBlocks = parseCodeBlocks(input);
 	const extractedFiles: FileExtraction[] = [];
@@ -146,10 +153,10 @@ export function preprocessMarkdown(
 	// Track the current directory context
 	let currentDirectory: string | null = null;
 
-	// Set of block indices to remove completely (for file extraction)
-	const blocksToRemove: Set<number> = new Set();
 	// Map of block indices to transformations (prepend cd)
 	const blocksToTransform: Map<number, string> = new Map();
+	// Map of block indices to transform to heredoc
+	const blocksToHeredoc: Map<number, HeredocTransform> = new Map();
 
 	// Process each code block
 	for (let i = 0; i < codeBlocks.length; i++) {
@@ -162,29 +169,20 @@ export function preprocessMarkdown(
 		const filePath = tryExtractFilePath(firstLine);
 
 		if (filePath) {
-			// This is a file extraction block
+			// This is a file extraction block - transform to heredoc
 			// Remove the comment line from the file content
 			const fileContent = blockLines.slice(1).join('\n').trim();
 			extractedFiles.push({
-				filePath: resolve(cwd, filePath),
+				filePath: filePath, // Keep relative path for heredoc command
 				content: fileContent,
 				language: block.language,
 			});
 
-			// Mark this block for removal
-			blocksToRemove.add(i);
-
-			// If outputFiles is true, write the file
-			if (outputFiles) {
-				const filePath = extractedFiles[extractedFiles.length - 1].filePath;
-				const dir = dirname(filePath);
-
-				// Create directory if it doesn't exist
-				mkdirSync(dir, {recursive: true});
-
-				writeFileSync(filePath, fileContent, 'utf-8');
-				console.log(`Extracted file: ${filePath}`);
-			}
+			// Mark this block for transformation to heredoc
+			blocksToHeredoc.set(i, {
+				filePath: filePath,
+				content: fileContent,
+			});
 
 			continue;
 		}
@@ -250,9 +248,16 @@ export function preprocessMarkdown(
 			if (blockIndex !== -1) {
 				const block = codeBlocks[blockIndex];
 
-				// Check if this block should be removed
-				if (blocksToRemove.has(blockIndex)) {
-					// Skip this entire block
+				// Check if this block should be transformed to heredoc
+				if (blocksToHeredoc.has(blockIndex)) {
+					const heredoc = blocksToHeredoc.get(blockIndex)!;
+					// Transform to bash heredoc block
+					preprocessedLines.push('```bash');
+					preprocessedLines.push(`cat > '${heredoc.filePath}' << 'EZXEOF'`);
+					preprocessedLines.push(heredoc.content);
+					preprocessedLines.push('EZXEOF');
+					preprocessedLines.push('```');
+					// Skip to the closing ```
 					i = block.endLine;
 					continue;
 				}
@@ -294,7 +299,7 @@ export function preprocessMarkdown(
  */
 export function preprocessFile(
 	filePath: string,
-	options: {outputFiles?: boolean; cwd?: string} = {},
+	options: {cwd?: string} = {},
 ): PreprocessResult {
 	const content = readFileSync(filePath, 'utf-8');
 	return preprocessMarkdown(content, options);
