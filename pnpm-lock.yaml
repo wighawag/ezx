@@ -19,8 +19,8 @@ importers:
         specifier: ^25.0.10
         version: 25.0.10
       as-soon:
-        specifier: ^0.1.4
-        version: 0.1.4
+        specifier: ^0.1.5
+        version: 0.1.5
       typescript:
         specifier: ^5.9.3
         version: 5.9.3
@@ -112,8 +112,8 @@ packages:
   '@types/node@25.0.10':
     resolution: {integrity: sha512-zWW5KPngR/yvakJgGOmZ5vTBemDoSqF3AcV/LrO5u5wTWyEAVVh+IT39G4gtyAkh3CtTZs8aX/yRM82OfzHJRg==}
 
-  as-soon@0.1.4:
-    resolution: {integrity: sha512-hWkB6gACQAFXAVF0RmcKca7WQEFOeLQ/+w+qJaJaUK/KjrnD5m+jK0X4EcQ8jhzkfy3jOmMtDrCWEz8cPpIgew==}
+  as-soon@0.1.5:
+    resolution: {integrity: sha512-SEtTecZ65v3nf2JIvhbTMHcd7C1dAWbKCQO7sJDlGeW4w+wuaEBsaaJ7FldGExxWQCflGkdP+4tG+mcca/bM0w==}
     hasBin: true
 
   commander@14.0.2:
@@ -144,8 +144,8 @@ packages:
     resolution: {integrity: sha512-ShaNPPzgUi+iGj9bsQ0TPRm6MuOcPpc1NklL0/IzJsvB0OdHwWoPhmeTVR5z0oC3zzLebrojozo/nt8d2XTZbQ==}
     hasBin: true
 
-  lodash@4.17.23:
-    resolution: {integrity: sha512-LgVTMpQtIopCi79SJeDiP0TfWi5CNEc/L/aRdTh3yIvmZXTnheWpKjSZhnvMl8iXbC1tFg9gdHHDMLoV7CnG+w==}
+  lodash-es@4.17.23:
+    resolution: {integrity: sha512-kVI48u3PZr38HdYz98UmfPnXl2DXrpdctLrFLCd3kOx1xUkOmpFPx7gCWWM5MPkL/fD8zb+Ph0QzjGFs4+hHWg==}
 
   node-addon-api@7.1.1:
     resolution: {integrity: sha512-5m3bsyrjFWE1xf7nz7YXdN4udnVtXK6/Yfgn5qnahL6bCkf2yKt4k3nuTKAtT4r3IG8JNR2ncsIMdZuAzJjHQQ==}
@@ -233,11 +233,11 @@ snapshots:
     dependencies:
       undici-types: 7.16.0
 
-  as-soon@0.1.4:
+  as-soon@0.1.5:
     dependencies:
       '@parcel/watcher': 2.5.6
       ldenv: 0.3.16
-      lodash: 4.17.23
+      lodash-es: 4.17.23
 
   commander@14.0.2: {}
 
@@ -258,7 +258,7 @@ snapshots:
       dotenv: 16.6.1
       dotenv-expand: 10.0.0
 
-  lodash@4.17.23: {}
+  lodash-es@4.17.23: {}
 
   node-addon-api@7.1.1: {}
 

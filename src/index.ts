@@ -63,8 +63,13 @@ export async function runMarkdown(markdown: string | Buffer, options: RunMarkdow
 		// Transform markdown to JavaScript
 		let jsCode = transformMarkdown(preprocessedMarkdown);
 
+		// Resolve the absolute path to zx/globals using Node's module resolution
+		// This will work regardless of where ezx is installed (local, global, or as a dependency)
+		const zxGlobalsPath = await import.meta.resolve('zx/globals');
+
 		// Prepend globals import to make $, fs, path, etc. available in the script context
-		jsCode = `await import('zx/globals')\n\n${jsCode}`;
+		// Use the resolved absolute path to ensure zx is found
+		jsCode = `await import('${zxGlobalsPath}')\n\n${jsCode}`;
 
 		// Write to temp file in current directory (not tmpdir) so zx can be resolved
 		const cwd = options.cwd || process.cwd();
