@@ -5,7 +5,8 @@ export interface CodeBlock {
 	content: string;
 	startLine: number;
 	endLine: number;
-	filePath?: string; // File path from info string: ```json file:path/to/file.json
+	filePath?: string; // File path from preceding blockquote: > `path/to/file.json`
+	precedingBlockquoteLine?: number; // Line number of the blockquote with file path
 }
 
 export interface FileExtraction {
@@ -30,8 +31,30 @@ interface HeredocTransform {
 
 
 /**
+ * Extract file path from a blockquote line
+ * Supports: > `path/to/file.json` or > 📄 `path/to/file.json`
+ */
+function extractFilePathFromBlockquote(line: string): string | null {
+	const trimmed = line.trim();
+	// Match blockquote followed by optional emoji and backtick-wrapped path
+	// e.g., > `package.json` or > 📄 `package.json` or > file: package.json
+	const match = trimmed.match(/^>\s*(?:[\p{Emoji}]?\s*)?`([^`]+)`/u);
+	if (match) {
+		return match[1].trim();
+	}
+	
+	// Also support: > file: package.json (for backward compatibility with comment style)
+	const fileMatch = trimmed.match(/^>\s*(?:[\p{Emoji}]?\s*)?file[:=]\s*(.+)$/iu);
+	if (fileMatch) {
+		return fileMatch[1].trim();
+	}
+	
+	return null;
+}
+
+/**
  * Parse markdown and extract all code blocks with their line numbers
- * Also extracts file path from info string if present (e.g., ```json file:path/to/file.json)
+ * Also extracts file path from preceding blockquote if present
  */
 function parseCodeBlocks(markdown: string): CodeBlock[] {
 	const codeBlocks: CodeBlock[] = [];
@@ -39,6 +62,8 @@ function parseCodeBlocks(markdown: string): CodeBlock[] {
 	let inCodeBlock = false;
 	let currentBlock: Partial<CodeBlock> = {};
 	let blockStartLine = 0;
+	let precedingBlockquoteLine: number | undefined;
+	let pendingFilePath: string | undefined;
 
 	for (let i = 0; i < lines.length; i++) {
 		const line = lines[i];
@@ -46,18 +71,19 @@ function parseCodeBlocks(markdown: string): CodeBlock[] {
 		// Check for code block start
 		if (line.match(/^```/)) {
 			if (!inCodeBlock) {
-				// Starting a new code block
-				// Parse language and optional file directive from info string
-				// Formats: ```json, ```json file:path, ```json file=path
-				const match = line.match(/^```(\w*)\s*(?:file[:=](\S+))?/i);
+				// Starting a new code block - assign any pending file path
+				const languageMatch = line.match(/^```(\w*)/);
 				currentBlock = {
-					language: match?.[1] || '',
-					filePath: match?.[2] || undefined,
+					language: languageMatch?.[1] || '',
+					filePath: pendingFilePath,
+					precedingBlockquoteLine: precedingBlockquoteLine,
 					content: '',
 					startLine: i,
 				};
 				inCodeBlock = true;
 				blockStartLine = i;
+				precedingBlockquoteLine = undefined;
+				pendingFilePath = undefined; // Reset for next block
 			} else {
 				// Ending the current code block
 				if (
@@ -71,10 +97,18 @@ function parseCodeBlocks(markdown: string): CodeBlock[] {
 						startLine: currentBlock.startLine,
 						endLine: i,
 						filePath: currentBlock.filePath,
+						precedingBlockquoteLine: currentBlock.precedingBlockquoteLine,
 					});
 				}
 				inCodeBlock = false;
 				currentBlock = {};
+			}
+		} else if (!inCodeBlock) {
+			// Look for blockquote with file path (only outside code blocks)
+			const filePath = extractFilePathFromBlockquote(line);
+			if (filePath) {
+				precedingBlockquoteLine = i;
+				pendingFilePath = filePath;
 			}
 		} else if (inCodeBlock && currentBlock.content !== undefined) {
 			// Add line to current block content
@@ -119,7 +153,7 @@ export function preprocessMarkdown(
 		const block = codeBlocks[i];
 		const isBash = block.language === 'bash' || block.language === 'sh' || block.language === 'shell';
 
-		// Check if this is a file extraction block (file path in info string)
+		// Check if this is a file extraction block (file path from preceding blockquote)
 		if (block.filePath) {
 			// This is a file extraction block - transform to heredoc
 			const fileContent = block.content.trim();
@@ -190,10 +224,21 @@ export function preprocessMarkdown(
 
 	// Build preprocessed markdown
 	const preprocessedLines: string[] = [];
-	let processedBlocks = 0;
+	// Track lines to skip (blockquote lines that contained file paths)
+	const linesToSkip = new Set<number>();
+	for (const block of codeBlocks) {
+		if (block.precedingBlockquoteLine !== undefined && block.filePath) {
+			linesToSkip.add(block.precedingBlockquoteLine);
+		}
+	}
 
 	for (let i = 0; i < lines.length; i++) {
 		const line = lines[i];
+
+		// Skip blockquote lines that contained file paths (they were consumed)
+		if (linesToSkip.has(i)) {
+			continue;
+		}
 
 		// Check if this is the start of a code block
 		if (line.match(/^```/)) {

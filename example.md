@@ -18,7 +18,9 @@ Let's extract some files into the demo-project directory:
 
 ### Extract a package.json
 
-```json file:package.json
+> `package.json`
+
+```json
 {
   "name": "demo-project",
   "version": "1.0.0",
@@ -32,7 +34,9 @@ Let's extract some files into the demo-project directory:
 
 ### Extract a README.md
 
-```markdown file:README.md
+> `README.md`
+
+```markdown
 # Demo Project
 
 This project was created using ezx!
@@ -40,7 +44,9 @@ This project was created using ezx!
 
 ### Extract an index.js file
 
-```javascript file:index.js
+> `index.js`
+
+```javascript
 console.log('Hello from ezx!')
 console.log('Current directory:', process.cwd())
 ```

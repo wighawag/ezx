@@ -25,6 +25,64 @@ pwd
 
 ### 2. File Extraction
 
+Extract code blocks to files using a preceding blockquote with the file path. The file path is wrapped in backticks within the blockquote, and an optional emoji can be added for visual clarity.
+
+```markdown
+> `package.json`
+
+```json
+{
+  "name": "my-project",
+  "version": "1.0.0"
+}
+```⁠
+```
+
+Or with an optional emoji:
+
+```markdown
+> 📄 `package.json`
+
+```json
+{
+  "name": "my-project"
+}
+```⁠
+```
+
+**JSON:**
+> `my-project/package.json`
+
+```json
+{
+  "name": "my-project",
+  "version": "1.0.0"
+}
+```
+
+**TypeScript/JavaScript:**
+> `my-project/index.ts`
+
+```typescript
+console.log("Hello world")
+```
+
+**Bash/Shell:**
+> `my-project/.npmrc`
+
+```bash
+shared-workspace-lockfile=false
+```
+
+**Markdown:**
+> `my-project/README.md`
+
+```markdown
+# My Project
+```
+
+**Any language:** The file directive works with any language, including unknown languages, because it's specified in a preceding blockquote, not inside the code content.
+
 **Note:** zx executes all code blocks in markdown files. If you have code blocks that are for documentation only (examples to show users, not to run or write as files), add the `no-eval` flag to prevent execution:
 
 ```markdown
@@ -35,33 +93,6 @@ interface User {
 }
 ```⁠
 ```
-
-Extract code blocks to files using the info string syntax on the code fence. The file directive is specified after the language identifier using `file:` or `file=`. The file path is always relative to the original working directory (not affected by `# set the current directory`).
-
-**JSON:**
-```json file:my-project/package.json
-{
-  "name": "my-project",
-  "version": "1.0.0"
-}
-```
-
-**TypeScript/JavaScript:**
-```typescript file:my-project/index.ts
-console.log("Hello world")
-```
-
-**Bash/Shell:**
-```bash file:my-project/.npmrc
-shared-workspace-lockfile=false
-```
-
-**Markdown:**
-```markdown file:my-project/README.md
-# My Project
-```
-
-**Any language:** The file directive works with any language, including unknown languages, because it's specified in the code fence info string, not inside the code content.
 
 File extraction blocks are transformed to bash heredoc commands that execute in order with the rest of the markdown. If a directory context is active, the heredoc command will prepend `cd`:
 
@@ -149,7 +180,9 @@ cd my-app
 npm init -y
 \`\`\`
 
-\`\`\`json file:my-app/package.json
+> `my-app/package.json`
+
+\`\`\`json
 {
   "name": "my-app",
   "version": "1.0.0",
@@ -159,7 +192,9 @@ npm init -y
 }
 \`\`\`
 
-\`\`\`typescript file:my-app/index.ts
+> `my-app/index.ts`
+
+\`\`\`typescript
 console.log('Hello from ezx!')
 \`\`\`
 

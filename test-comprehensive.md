@@ -20,7 +20,9 @@ echo "Still in dir1"
 
 ## Scenario 2: Directory change with file extraction in between
 
-```json file:config.json
+> `config.json`
+
+```json
 {
   "setting": "value"
 }
