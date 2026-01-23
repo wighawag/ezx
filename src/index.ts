@@ -15,6 +15,61 @@ export interface RunMarkdownOptions {
 	postfix?: string;
 	cwd?: string;
 	preferLocal?: boolean;
+	sections?: string[]; // Execute only sections under these headings
+}
+
+/**
+ * Extract sections from markdown based on heading matches
+ * Returns only the content under the specified headings
+ */
+function extractSectionsByHeading(markdown: string, sectionHeadings: string[]): string {
+	if (!sectionHeadings || sectionHeadings.length === 0) {
+		return markdown;
+	}
+
+	const lines = markdown.split('\n');
+	const result: string[] = [];
+	let inMatchingSection = false;
+	let currentSectionLevel = 0;
+	let inCodeBlock = false;
+
+	// Normalize section headings (case-insensitive, trim whitespace)
+	const normalizedSectionHeadings = sectionHeadings.map(h => h.trim().toLowerCase());
+	const headingRegex = /^(#{1,6})\s+(.+)$/;
+
+	for (let i = 0; i < lines.length; i++) {
+		const line = lines[i];
+		
+		// Track code blocks
+		if (line.startsWith('```')) {
+			inCodeBlock = !inCodeBlock;
+		}
+
+		// Only check for headings when not in a code block
+		const match = !inCodeBlock ? line.match(headingRegex) : null;
+
+		if (match) {
+			const level = match[1].length;
+			const headingText = match[2].trim().toLowerCase();
+
+			// Check if this heading matches one of our target headings
+			if (normalizedSectionHeadings.includes(headingText)) {
+				inMatchingSection = true;
+				currentSectionLevel = level;
+				result.push(line); // Include the heading itself
+			} else if (inMatchingSection) {
+				// If we're in a matching section and hit another heading of same or higher level
+				// (less # means higher in the hierarchy), exit the section
+				if (level <= currentSectionLevel) {
+					inMatchingSection = false;
+				}
+			}
+		} else if (inMatchingSection) {
+			result.push(line);
+		}
+	}
+
+	return result.join('\n');
 }
 
 /**
@@ -51,6 +106,11 @@ export async function runMarkdown(markdown: string | Buffer, options: RunMarkdow
 			markdownContent = await fs.readFile(markdown, 'utf8');
 		} else {
 			markdownContent = markdown.toString();
+		}
+
+		// Extract sections if specified
+		if (options.sections && options.sections.length > 0) {
+			markdownContent = extractSectionsByHeading(markdownContent, options.sections);
 		}
 
 		// Preprocess markdown with ezx enhancements

@@ -1,15 +1,22 @@
-# Getting Started
+# rocketh-
+
+## Test
+
+```bash
+echo "Hello World"
+```
+
+## Getting Started
 
 In this guide, we will create a new project using Rocketh.
 
 This mardkown file can be executed by [ezx](https://github.com/wighawag/ezx)
 
-## Prerequisites
+### Prerequisites
 
 - [Node.js](https://nodejs.org/en/download/) (v20 or later)
 - [pnpm](https://pnpm.io/installation) (v9 or later)
 
-## Create a new project
 
 ### create a new directory and cd into it
 

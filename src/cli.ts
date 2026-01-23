@@ -16,6 +16,7 @@ program
 	.option('--prefix <command>', 'prefix all commands')
 	.option('--postfix <command>', 'postfix all commands')
 	.option('--cwd <path>', 'set current directory')
+	.option('-s, --sections <headings...>', 'execute only sections under these headings (e.g., "Create a new project")')
 	.action(async (script: string, options: RunMarkdownOptions) => {
 		try {
 			await runMarkdownFile(script, options);

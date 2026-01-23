@@ -128,6 +128,23 @@ ezx --verbose script.md
 ezx --shell=/bin/bash script.md
 ```
 
+#### Execute Specific Sections
+
+You can execute only specific sections of a markdown file by specifying their heading titles. This is useful for running parts of a larger documentation file:
+
+```bash
+# Run only the "Create a new project" section
+ezx --sections "Create a new project" docs/getting-started.md
+
+# Run multiple sections
+ezx --sections "Prerequisites" "Create a new project" docs/getting-started.md
+
+# Short form
+ezx -s "Create a new project" docs/getting-started.md
+```
+
+Section matching is case-insensitive and includes all content under the specified heading and its subheadings until another heading of the same or higher level is encountered.
+
 ### Programmatic Usage
 
 ```typescript
@@ -227,6 +244,7 @@ Run markdown content or file with CLI-like options.
 - `postfix` (string) - Postfix all commands
 - `cwd` (string) - Current working directory
 - `preferLocal` (boolean) - Prefer locally installed packages
+- `sections` (string[]) - Execute only sections under these heading titles
 
 ### `runMarkdownFile(filePath, options)`
 
