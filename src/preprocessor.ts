@@ -19,53 +19,6 @@ export interface PreprocessResult {
 	extractedFiles: FileExtraction[];
 }
 
-/**
- * Comment tokens for different languages
- */
-const COMMENT_TOKENS: Record<string, string> = {
-	// Languages with // comment
-	typescript: '//',
-	javascript: '//',
-	js: '//',
-	ts: '//',
-	cpp: '//',
-	c: '//',
-	csharp: '//',
-	go: '//',
-	rust: '//',
-	java: '//',
-	kotlin: '//',
-	swift: '//',
-	php: '//',
-	// Languages with # comment
-	bash: '#',
-	sh: '#',
-	shell: '#',
-	python: '#',
-	rb: '#',
-	ruby: '#',
-	perl: '#',
-	r: '#',
-	// Languages with -- comment
-	sql: '--',
-	lua: '--',
-	haskell: '--',
-	// Languages with ; comment
-	asm: ';',
-	// Languages with <!-- comment -->
-	html: '<!--',
-	xml: '<!--',
-	markdown: '<!--',
-	md: '<!--',
-};
-
-/**
- * Get the comment token for a language
- */
-function getCommentToken(language: string): string | null {
-	const lowerLang = language.toLowerCase().trim();
-	return COMMENT_TOKENS[lowerLang] || null;
-}
 
 /**
  * Parse markdown and extract all code blocks with their line numbers
@@ -154,6 +107,31 @@ function escapeRegExp(string: string): string {
 }
 
 /**
+ * Try to extract file path from a line using multiple comment patterns
+ */
+function tryExtractFilePath(line: string): string | null {
+	// Common comment patterns to try, in order of preference
+	const commentPatterns = [
+		'//',        // Most common
+		'#',         // Shell/Python
+		'<!--',      // HTML/XML/Markdown
+		'--',        // SQL/Lua
+		';',         // Assembly
+	];
+
+	const trimmed = line.trim();
+
+	for (const pattern of commentPatterns) {
+		const filePath = isFileExtractionComment(trimmed, pattern);
+		if (filePath) {
+			return filePath;
+		}
+	}
+
+	return null;
+}
+
+/**
  * Preprocess markdown file
  */
 export function preprocessMarkdown(
@@ -178,40 +156,37 @@ export function preprocessMarkdown(
 		const block = codeBlocks[i];
 		const blockLines = block.content.split('\n');
 		const isBash = block.language === 'bash' || block.language === 'sh' || block.language === 'shell';
-		const commentToken = getCommentToken(block.language);
 
-		// Check if this is a file extraction block
-		if (commentToken) {
-			const firstLine = blockLines[0] || '';
-			const filePath = isFileExtractionComment(firstLine, commentToken);
+		// Check if this is a file extraction block by trying multiple comment patterns
+		const firstLine = blockLines[0] || '';
+		const filePath = tryExtractFilePath(firstLine);
 
-			if (filePath) {
-				// This is a file extraction block
-				// Remove the comment line from the file content
-				const fileContent = blockLines.slice(1).join('\n').trim();
-				extractedFiles.push({
-					filePath: resolve(cwd, filePath),
-					content: fileContent,
-					language: block.language,
-				});
+		if (filePath) {
+			// This is a file extraction block
+			// Remove the comment line from the file content
+			const fileContent = blockLines.slice(1).join('\n').trim();
+			extractedFiles.push({
+				filePath: resolve(cwd, filePath),
+				content: fileContent,
+				language: block.language,
+			});
 
-				// Mark this block for removal
-				blocksToRemove.add(i);
+			// Mark this block for removal
+			blocksToRemove.add(i);
 
-				// If outputFiles is true, write the file
-				if (outputFiles) {
-					const filePath = extractedFiles[extractedFiles.length - 1].filePath;
-					const dir = dirname(filePath);
+			// If outputFiles is true, write the file
+			if (outputFiles) {
+				const filePath = extractedFiles[extractedFiles.length - 1].filePath;
+				const dir = dirname(filePath);
 
-					// Create directory if it doesn't exist
-					mkdirSync(dir, {recursive: true});
+				// Create directory if it doesn't exist
+				mkdirSync(dir, {recursive: true});
 
-					writeFileSync(filePath, fileContent, 'utf-8');
-					console.log(`Extracted file: ${filePath}`);
-				}
-
-				continue;
+				writeFileSync(filePath, fileContent, 'utf-8');
+				console.log(`Extracted file: ${filePath}`);
 			}
+
+			continue;
 		}
 
 		// Check for directory set command in bash blocks
