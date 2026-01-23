@@ -1,217 +1,212 @@
-# ezx - Markdown Preprocessor for zx
+# ezx - Enhanced zx
 
-A markdown preprocessor that addresses common annoyances when using [zx](https://github.com/google/zx) to execute code blocks in markdown files.
+An enhanced version of zx with markdown preprocessing features to solve common annoyances when writing shell scripts in markdown.
 
 ## Features
 
 ### 1. Directory Context Persistence
 
-When using zx to execute bash code blocks in markdown, each block executes in a fresh context, meaning `cd` commands don't persist between blocks. ezx solves this by allowing you to set a persistent directory context.
+In standard zx, each bash code block runs in a fresh context, so `cd` commands don't persist across blocks. ezx solves this with a special comment syntax:
 
 ```bash
 # set the current directory
+mkdir -p my-project
 cd my-project
-npm install
 ```
 
-The comment `# set the current directory` tells ezx to prepend `cd my-project` to all subsequent bash code blocks.
+All subsequent bash blocks will automatically prepend `cd my-project`:
 
 ```bash
-npm run build  # This will run in my-project directory
+echo "We're still in my-project!"
+pwd
 ```
 
 ### 2. File Extraction
 
-Extract code blocks to files automatically, avoiding the need for heredocs and `cat` commands.
+Extract code blocks to files using language-specific comment syntax:
 
+**TypeScript/JavaScript:**
 ```typescript
-// file: src/index.ts
-export function hello(name: string): string {
-	return `Hello, ${name}!`;
+// file: package.json
+{
+  "name": "my-project",
+  "version": "1.0.0"
 }
 ```
 
-```python
-# file: scripts/main.py
-def greet(name):
-	return f"Greetings, {name}!"
-```
-
+**Bash/Shell:**
 ```bash
 # file: .npmrc
 shared-workspace-lockfile=false
 ```
 
-The file extraction blocks are removed from the preprocessed markdown and written to their specified paths.
+**Markdown:**
+```markdown
+<!-- file: README.md -->
+# My Project
+```
 
-### 3. Multi-Language Support
-
-File extraction works with comment tokens for multiple languages:
-
-- `//` - TypeScript, JavaScript, C++, Go, Rust, Java, Kotlin, Swift, PHP
-- `#` - Bash, Python, Ruby, Perl, R
-- `--` - SQL, Lua, Haskell
-- `;` - Assembly
-- `<!--` - HTML, XML
+Supported languages include: typescript, javascript, js, ts, bash, sh, shell, python, ruby, go, rust, java, sql, html, xml, and more.
 
 ## Installation
 
 ```bash
-npm install -g ezx
-```
-
-Or use with npx:
-
-```bash
-npx ezx input.md
+npm install ezx
 ```
 
 ## Usage
 
-### Basic Usage
+### CLI Usage
 
-Preprocess a markdown file and output to stdout:
-
-```bash
-ezx input.md
-```
-
-### Write to File
+Run markdown scripts with ezx enhancements:
 
 ```bash
-ezx input.md -o output.md
+ezx script.md
+ezx --verbose script.md
+ezx --shell=/bin/bash script.md
 ```
 
-### Extract Files
+### Programmatic Usage
 
-Extract file blocks to disk:
+```typescript
+import { runMarkdownFile, runMarkdownContent } from 'ezx'
 
-```bash
-ezx input.md -w
+// Run markdown file
+await runMarkdownFile('./script.md', { verbose: true })
+
+// Run markdown content directly
+await runMarkdownContent(`
+\`\`\`bash
+# set the current directory
+mkdir -p my-project
+cd my-project
+\`\`\`
+
+\`\`\`bash
+echo "Still in my-project!"
+\`\`\`
+`, { verbose: true })
 ```
 
-### Combine Options
+### Preprocessor API
 
-Preprocess and extract files:
+You can also use the preprocessor directly:
 
-```bash
-ezx input.md -o output.md -w
+```typescript
+import { preprocessMarkdown, preprocessFile } from 'ezx'
+
+// Preprocess markdown content
+const { preprocessedMarkdown, extractedFiles } = preprocessMarkdown(markdown)
+
+// Preprocess markdown file with auto-extraction
+const result = preprocessFile('./script.md', { 
+  outputFiles: true,  // Write files to disk
+  cwd: process.cwd() 
+})
 ```
-
-### Specify Working Directory
-
-```bash
-ezx input.md -c /path/to/project
-```
-
-### Pipe from stdin
-
-```bash
-cat input.md | ezx stdin
-```
-
-## CLI Options
-
-- `<input>` - Input markdown file path (required)
-- `-o, --output <path>` - Output file path (defaults to stdout)
-- `-w, --write-files` - Extract and write files to disk
-- `-c, --cwd <path>` - Working directory for relative paths (default: current directory)
-- `-h, --help` - Display help information
-- `-V, --version` - Display version number
-
-## How It Works
-
-### Directory Context
-
-1. When ezx encounters `# set the current directory` followed by a `cd` command, it stores the directory
-2. The comment and `cd` command are removed from the output
-3. All subsequent bash code blocks have `cd <directory>` prepended to them
-4. The context persists until changed by another `# set the current directory` or reset by a file extraction
-
-### File Extraction
-
-1. When ezx encounters a file extraction comment (e.g., `// file: path/to/file`), it:
-   - Removes the entire code block from the output markdown
-   - Extracts the content (excluding the comment line)
-   - Writes the file to the specified path (if `-w` flag is used)
-2. File extraction blocks reset the directory context
 
 ## Example
 
-### Input (input.md)
+Here's a complete example showing both features:
 
 ```markdown
-# My Project Setup
+# Setup a new project
 
-```bash
+\`\`\`bash
 # set the current directory
-cd my-project
+mkdir -p my-app
+cd my-app
+npm init -y
+\`\`\`
+
+\`\`\`typescript
+// file: package.json
+{
+  "name": "my-app",
+  "version": "1.0.0",
+  "scripts": {
+    "start": "node index.js"
+  }
+}
+\`\`\`
+
+\`\`\`typescript
+// file: index.ts
+console.log('Hello from ezx!')
+\`\`\`
+
+\`\`\`bash
 npm install
+npm start
+\`\`\`
+
+\`\`\`bash
+cd ..
+rm -rf my-app
+\`\`\`
 ```
+
+## API Reference
+
+### `runMarkdown(markdown, options)`
+
+Run markdown content or file with CLI-like options.
+
+**Parameters:**
+- `markdown` (string | Buffer) - Markdown content or file path
+- `options` (RunMarkdownOptions) - CLI-like options
+
+**Options:**
+- `verbose` (boolean) - Enable verbose mode
+- `quiet` (boolean) - Suppress output
+- `shell` (string) - Custom shell binary
+- `prefix` (string) - Prefix all commands
+- `postfix` (string) - Postfix all commands
+- `cwd` (string) - Current working directory
+- `preferLocal` (boolean) - Prefer locally installed packages
+
+### `runMarkdownFile(filePath, options)`
+
+Convenience function to run a markdown file from disk.
+
+### `runMarkdownContent(markdownContent, options)`
+
+Convenience function to run markdown content directly as a string.
+
+### `preprocessMarkdown(input, options)`
+
+Preprocess markdown content.
+
+**Parameters:**
+- `input` (string) - Markdown content
+- `options` (object)
+  - `outputFiles` (boolean) - Write extracted files to disk
+  - `cwd` (string) - Current working directory
+
+**Returns:** PreprocessResult
+- `preprocessedMarkdown` (string) - The preprocessed markdown
+- `extractedFiles` (FileExtraction[]) - Array of extracted files
+
+### `preprocessFile(filePath, options)`
+
+Read and preprocess a markdown file.
+
+## Development
 
 ```bash
-npm run build
-```
-
-```typescript
-// file: src/index.ts
-console.log("Hello World");
-```
-
-```bash
-echo "Backend work"
-```
-```
-
-### Output (with `ezx input.md`)
-
-```markdown
-# My Project Setup
-
-```bash
-cd my-project
+# Install dependencies
 npm install
-```
 
-```bash
-cd my-project
+# Build
 npm run build
-```
 
-```bash
-echo "Backend work"
-```
-```
+# Watch mode
+npm run dev
 
-### Extracted Files (with `-w` flag)
-
-- `src/index.ts`:
-  ```typescript
-  console.log("Hello World");
-  ```
-
-## Use Cases
-
-1. **Documentation with Executable Examples** - Keep your documentation executable while maintaining proper directory context
-2. **Project Setup Guides** - Automatically extract configuration files from markdown documentation
-3. **Tutorials** - Create multi-step tutorials where commands run in the correct directories
-4. **Development Workflows** - Document and automate development processes
-
-## Integration with zx
-
-After preprocessing with ezx, you can use the output with zx:
-
-```bash
-ezx input.md -o processed.md
-zx processed.md
-```
-
-Or pipe directly:
-
-```bash
-ezx input.md | zx
+# Run tests
+node dist/cli.js test-preprocessor.md --verbose
 ```
 
 ## License
 
-MIT
+Apache-2.0
