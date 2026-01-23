@@ -24,6 +24,7 @@ export interface PreprocessResult {
 interface HeredocTransform {
 	filePath: string;
 	content: string;
+	directoryPrefix?: string; // Optional cd prefix for unified directory context
 }
 
 
@@ -179,9 +180,11 @@ export function preprocessMarkdown(
 			});
 
 			// Mark this block for transformation to heredoc
+			// If we have a current directory, prepend it to the heredoc command
 			blocksToHeredoc.set(i, {
 				filePath: filePath,
 				content: fileContent,
+				directoryPrefix: currentDirectory || undefined,
 			});
 
 			continue;
@@ -253,7 +256,18 @@ export function preprocessMarkdown(
 					const heredoc = blocksToHeredoc.get(blockIndex)!;
 					// Transform to bash heredoc block
 					preprocessedLines.push('```bash');
-					preprocessedLines.push(`cat > '${heredoc.filePath}' << 'EZXEOF'`);
+					// If we have a directory prefix, prepend cd && to the cat command
+					// Also strip the directory prefix from the file path if it matches
+					let catPath = heredoc.filePath;
+					if (heredoc.directoryPrefix) {
+						// Remove the directory prefix from the file path if it starts with it
+						if (catPath.startsWith(heredoc.directoryPrefix + '/')) {
+							catPath = catPath.slice(heredoc.directoryPrefix.length + 1);
+						}
+						preprocessedLines.push(`cd ${heredoc.directoryPrefix} && cat > '${catPath}' << 'EZXEOF'`);
+					} else {
+						preprocessedLines.push(`cat > '${catPath}' << 'EZXEOF'`);
+					}
 					preprocessedLines.push(heredoc.content);
 					preprocessedLines.push('EZXEOF');
 					preprocessedLines.push('```');

@@ -21,6 +21,8 @@ echo "We're still in my-project!"
 pwd
 ```
 
+**Note:** The directory context also affects file extraction blocks. Files created after `# set the current directory` will have their paths relative to the original directory, but the command will prepend `cd` to create them in the correct location.
+
 ### 2. File Extraction
 
 Extract code blocks to files using comment syntax. The file directive must be on the first line of the code block, and the file path is always relative to the original working directory (not affected by `# set the current directory`).
@@ -48,10 +50,17 @@ shared-workspace-lockfile=false
 
 **Any language:** The file directive works with any language, including unknown languages, by trying common comment patterns (`//`, `#`, `<!--`, `--`, `;`).
 
-File extraction blocks are transformed to bash heredoc commands that execute in order with the rest of the markdown:
+File extraction blocks are transformed to bash heredoc commands that execute in order with the rest of the markdown. If a directory context is active, the heredoc command will prepend `cd`:
+
 ```bash
+# Without directory context:
 cat > 'path/to/file' << 'EZXEOF'
-file content here
+content here
+EZXEOF
+
+# With directory context (after "# set the current directory my-project"):
+cd my-project && cat > 'path/to/file' << 'EZXEOF'
+content here
 EZXEOF
 ```
 
