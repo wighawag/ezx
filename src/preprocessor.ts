@@ -166,11 +166,11 @@ function parseCodeBlocks(markdown: string): CodeBlock[] {
 	for (let i = 0; i < lines.length; i++) {
 		const line = lines[i];
 
-		// Check for code block start
-		if (line.match(/^```/)) {
+		// Check for code block start (including indented code blocks in list items)
+		if (line.match(/^\s*```/)) {
 			if (!inCodeBlock) {
 				// Starting a new code block
-				const languageMatch = line.match(/^```(\w*)/);
+				const languageMatch = line.match(/^\s*```(\w*)/);
 				const language = languageMatch?.[1] || '';
 				
 				// Validate async directive is only used with bash blocks
@@ -370,8 +370,8 @@ export function preprocessMarkdown(
 			continue;
 		}
 
-		// Check if this is the start of a code block
-		if (line.match(/^```/)) {
+		// Check if this is the start of a code block (including indented code blocks in list items)
+		if (line.match(/^\s*```/)) {
 			const blockIndex = codeBlocks.findIndex((b) => b.startLine === i);
 
 			if (blockIndex !== -1) {
