@@ -2,7 +2,7 @@ import {transformMarkdown} from 'zx/cli';
 import {$, fs, path} from 'zx';
 import {randomBytes} from 'node:crypto';
 import {fileURLToPath, pathToFileURL} from 'node:url';
-import {preprocessMarkdown} from './preprocessor.js';
+import {preprocessMarkdown, sanitizeMarkdownForZx} from './preprocessor.js';
 
 // Import zx globals to make $, path, fs, etc. available globally
 await import('zx/globals');
@@ -118,8 +118,12 @@ export async function runMarkdown(markdown: string | Buffer, options: RunMarkdow
 			cwd: options.cwd || process.cwd(),
 		});
 
+		// Sanitize markdown to prevent zx from misinterpreting indented prose as code
+		// This handles edge cases like indented code blocks within list items
+		const sanitizedMarkdown = sanitizeMarkdownForZx(preprocessedMarkdown);
+
 		// Transform markdown to JavaScript
-		let jsCode = transformMarkdown(preprocessedMarkdown);
+		let jsCode = transformMarkdown(sanitizedMarkdown);
 
 		// Resolve the absolute path to zx/globals using Node's module resolution
 		// This will work regardless of where ezx is installed (local, global, or as a dependency)

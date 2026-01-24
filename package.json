@@ -1,7 +1,7 @@
 {
 	"name": "ezx",
-	"version": "0.0.6",
-	"description": "Enhanced zx - Write better shell scripts with markdown preprocessing features including directory context persistence and file extraction",
+	"version": "0.0.7",
+	"description": "Enhanced zx - Write better shell scripts with markdown preprocessing features including directory context persistence, file extraction, and fixes for zx's indentation parsing issues",
 	"keywords": [
 		"zx",
 		"shell",
@@ -52,6 +52,7 @@
 	],
 	"dependencies": {
 		"commander": "^14.0.2",
+		"marked": "^17.0.1",
 		"zx": "^8.8.5"
 	},
 	"devDependencies": {

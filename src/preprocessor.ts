@@ -1,4 +1,5 @@
 import {readFileSync} from 'node:fs';
+import {marked, Lexer} from 'marked';
 
 export interface CodeBlock {
 	language: string;
@@ -29,6 +30,53 @@ interface HeredocTransform {
 	directoryPrefix?: string; // Optional cd prefix for unified directory context
 }
 
+
+/**
+ * Sanitize markdown to prevent zx's parser from misinterpreting
+ * indented prose as code blocks.
+ *
+ * zx treats lines starting with 2+ spaces after an empty line as code.
+ * We use marked to identify actual code blocks and rebuild the markdown
+ * with only headings and code blocks (stripping all prose).
+ *
+ * This also handles the edge case of indented code blocks within list items
+ * (e.g., "  ```bash" within a list), which zx's regex parser cannot handle.
+ */
+export function sanitizeMarkdownForZx(markdown: string): string {
+	const tokens = Lexer.lex(markdown);
+	const output: string[] = [];
+
+	// Recursively process tokens to extract code blocks and headings
+	function processTokens(tokenArray: any[], depth: number = 0) {
+		for (const token of tokenArray) {
+			if (token.type === 'code') {
+				// Keep fenced code blocks - marked handles indentation correctly
+				const fence = '```';
+				output.push(`${fence}${token.lang || ''}`);
+				output.push(token.text);
+				output.push(fence);
+				output.push(''); // Empty line after for readability
+			} else if (token.type === 'heading') {
+				// Keep headings (useful for section extraction in ezx)
+				output.push(`${'#'.repeat(token.depth)} ${token.text}`);
+				output.push('');
+			} else if (token.type === 'list' && token.items) {
+				// Process list items to find nested code blocks
+				for (const item of token.items) {
+					if (item.tokens) {
+						processTokens(item.tokens, depth + 1);
+					}
+				}
+			}
+			// Other content (paragraphs, lists, blockquotes, etc.) is dropped
+			// since it's not executable and could confuse zx's parser
+		}
+	}
+
+	processTokens(tokens);
+
+	return output.join('\n');
+}
 
 /**
  * Extract file path from a blockquote line

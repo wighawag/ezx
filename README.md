@@ -4,7 +4,36 @@ An enhanced version of zx with markdown preprocessing features to solve common a
 
 ## Features
 
-### 1. Directory Context Persistence
+### 1. Markdown Parsing Fixes (Indentation Issues)
+
+ezx fixes known markdown parsing issues in zx related to indentation:
+
+- **Indented code blocks within lists** - Code blocks indented within list items (e.g., `  ```bash` after a bullet point) are now correctly recognized and executed
+- **Indented prose** - List item continuations and other indented prose won't be misinterpreted as code
+
+These issues are tracked in the zx project:
+- [Issue #1388 - Indented code blocks in lists not executed](https://github.com/google/zx/issues/1388)
+- [Issue #1389 - Indented prose after empty line causes parsing error](https://github.com/google/zx/issues/1389)
+
+**Example that works in ezx but not in zx:**
+
+```markdown
+### deploy your contract
+
+- on localhost
+
+  ```bash
+  pnpm run contracts:deploy localhost
+  ```
+
+- on a network of your choice
+
+  ```bash
+  pnpm run contracts:deploy <network>
+  ```
+```
+
+### 2. Directory Context Persistence
 
 In standard zx, each bash code block runs in a fresh context, so `cd` commands don't persist across blocks. ezx solves this with a special comment syntax:
 
@@ -23,7 +52,7 @@ pwd
 
 **Note:** The directory context also affects file extraction blocks. Files created after `# set the current directory` will have their paths relative to the original directory, but the command will prepend `cd` to create them in the correct location.
 
-### 2. File Extraction
+### 3. File Extraction
 
 Extract code blocks to files using a preceding blockquote with the file path. The file path is wrapped in backticks within the blockquote, and an optional emoji can be added for visual clarity.
 
@@ -185,7 +214,7 @@ const result = preprocessFile('./script.md', {
 
 ## Example
 
-Here's a complete example showing both features:
+Here's a complete example showing all three features:
 
 ```markdown
 # Setup a new project
