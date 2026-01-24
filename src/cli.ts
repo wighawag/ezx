@@ -2,13 +2,14 @@
 
 import {Command} from 'commander';
 import {runMarkdownFile, type RunMarkdownOptions} from './index.js';
+import pkg from '../package.json' with {type: 'json'};
 
 const program = new Command();
 
 program
 	.name('ezx')
 	.description('Enhanced zx - A tool for writing better scripts with markdown support')
-	.version('0.0.0')
+	.version(pkg.version)
 	.argument('<script>', 'Path to markdown script')
 	.option('-v, --verbose', 'enable verbose mode')
 	.option('-q, --quiet', 'suppress any outputs')
