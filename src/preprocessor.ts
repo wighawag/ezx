@@ -23,6 +23,7 @@ export interface CodeBlock {
 	isAsync?: boolean; // Whether this is an async block from async: directive
 	asyncDescription?: string; // Optional description from async: directive
 	precedingBlockquoteLine?: number; // Line number of the blockquote with directive
+	sleepSeconds?: number; // Sleep duration from sleep:N modifier
 }
 
 export interface FileExtraction {
@@ -111,6 +112,34 @@ function isBashLanguage(language: string): boolean {
 }
 
 /**
+ * Parse language tag and extract modifiers
+ * e.g., "bash sleep:3 skip" -> { language: "bash", languageTag: "bash skip", sleepSeconds: 3 }
+ * The languageTag has sleep:N removed but preserves other modifiers like skip
+ */
+function parseLanguageTag(langTag: string): { language: string; languageTag: string; sleepSeconds?: number } {
+	const parts = langTag.trim().split(/\s+/);
+	const language = parts[0] || '';
+	let sleepSeconds: number | undefined;
+	const otherModifiers: string[] = [];
+
+	for (let i = 1; i < parts.length; i++) {
+		const part = parts[i];
+		const sleepMatch = part.match(/^sleep:(\d+)$/i);
+		if (sleepMatch) {
+			sleepSeconds = parseInt(sleepMatch[1], 10);
+		} else {
+			// Preserve other modifiers like 'skip'
+			otherModifiers.push(part);
+		}
+	}
+
+	// Build language tag without sleep:N
+	const languageTag = [language, ...otherModifiers].join(' ');
+
+	return { language, languageTag, sleepSeconds };
+}
+
+/**
  * Extract directive from a blockquote line
  *
  * Supports:
@@ -169,9 +198,10 @@ function parseCodeBlocks(markdown: string): CodeBlock[] {
 		// Check for code block start (including indented code blocks in list items)
 		if (line.match(/^\s*```/)) {
 			if (!inCodeBlock) {
-				// Starting a new code block
-				const languageMatch = line.match(/^\s*```(\w*)/);
-				const language = languageMatch?.[1] || '';
+				// Starting a new code block - extract full language tag including modifiers
+				const languageMatch = line.match(/^\s*```(.*)$/);
+				const fullLangTag = languageMatch?.[1] || '';
+				const { language, languageTag, sleepSeconds } = parseLanguageTag(fullLangTag);
 				
 				// Validate async directive is only used with bash blocks
 				if (pendingDirective?.type === 'async' && !isBashLanguage(language)) {
@@ -192,6 +222,7 @@ function parseCodeBlocks(markdown: string): CodeBlock[] {
 					isAsync: pendingDirective?.type === 'async',
 					asyncDescription: pendingDirective?.type === 'async' ? pendingDirective.value : undefined,
 					precedingBlockquoteLine: precedingBlockquoteLine,
+					sleepSeconds,
 					content: '',
 					startLine: i,
 				};
@@ -207,15 +238,16 @@ function parseCodeBlocks(markdown: string): CodeBlock[] {
 					currentBlock.startLine !== undefined
 				) {
 					codeBlocks.push({
-						language: currentBlock.language,
-						content: currentBlock.content,
-						startLine: currentBlock.startLine,
-						endLine: i,
-						filePath: currentBlock.filePath,
-						isAsync: currentBlock.isAsync,
-						asyncDescription: currentBlock.asyncDescription,
-						precedingBlockquoteLine: currentBlock.precedingBlockquoteLine,
-					});
+							language: currentBlock.language,
+							content: currentBlock.content,
+							startLine: currentBlock.startLine,
+							endLine: i,
+							filePath: currentBlock.filePath,
+							isAsync: currentBlock.isAsync,
+							asyncDescription: currentBlock.asyncDescription,
+							precedingBlockquoteLine: currentBlock.precedingBlockquoteLine,
+							sleepSeconds: currentBlock.sleepSeconds,
+						});
 				}
 				inCodeBlock = false;
 				currentBlock = {};
@@ -433,8 +465,17 @@ export function preprocessMarkdown(
 					continue;
 				}
 
-				// Output the opening ``` line
-				preprocessedLines.push(line);
+				// Output the opening ``` line (strip only sleep:N, preserve other modifiers like skip)
+				// We need to get the languageTag from the original line since block.language is just the base language
+				const origLangMatch = line.match(/^\s*```(.*)$/);
+				const origFullTag = origLangMatch?.[1] || '';
+				const { languageTag } = parseLanguageTag(origFullTag);
+				preprocessedLines.push(`\`\`\`${languageTag}`);
+
+				// Check if we need to prepend sleep command (only for bash blocks)
+				if (block.sleepSeconds && isBashLanguage(block.language)) {
+					preprocessedLines.push(`sleep ${block.sleepSeconds}`);
+				}
 
 				// Check if we need to prepend cd command
 				if (blocksToTransform.has(blockIndex)) {
