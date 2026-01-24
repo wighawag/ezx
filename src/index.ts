@@ -147,16 +147,40 @@ export async function runMarkdown(markdown: string | Buffer, options: RunMarkdow
 		jsCode = `await import('${zxGlobalsPath}')\n\n${jsCode}`;
 
 		// Write to temp file in current directory (not tmpdir) so zx can be resolved
+		// Node's module resolution looks for package.json starting from the file's directory,
+		// so the temp file needs to be in a location that has access to node_modules
 		const cwd = options.cwd || process.cwd();
 		const tempFile = path.join(cwd, `.ezx-${randomBytes(8).toString('hex')}.mjs`);
 		await fs.writeFile(tempFile, jsCode);
+
+		// Register cleanup handlers for various exit scenarios
+		let tempFileCleaned = false;
+		const cleanup = async () => {
+			if (tempFileCleaned) return;
+			tempFileCleaned = true;
+			try {
+				await fs.rm(tempFile, {force: true});
+			} catch {
+				// Ignore cleanup errors
+			}
+		};
+
+		// Ensure cleanup on normal exit, uncaught errors, and signals
+		process.on('exit', cleanup);
+		process.on('uncaughtException', cleanup);
+		process.on('SIGINT', cleanup);
+		process.on('SIGTERM', cleanup);
 
 		try {
 			// Import and execute the transformed code (same as CLI)
 			await import(pathToFileURL(tempFile).toString());
 		} finally {
-			// Clean up temp file
-			await fs.rm(tempFile, {force: true}).catch(() => {});
+			// Clean up temp file and remove event listeners
+			await cleanup();
+			process.off('exit', cleanup);
+			process.off('uncaughtException', cleanup);
+			process.off('SIGINT', cleanup);
+			process.off('SIGTERM', cleanup);
 		}
 	} finally {
 		// Restore state

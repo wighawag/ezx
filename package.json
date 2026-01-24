@@ -1,6 +1,6 @@
 {
 	"name": "ezx",
-	"version": "0.0.10",
+	"version": "0.0.11",
 	"description": "Enhanced zx - Write better shell scripts with markdown preprocessing features including directory context persistence, file extraction, and fixes for zx's indentation parsing issues",
 	"keywords": [
 		"zx",
