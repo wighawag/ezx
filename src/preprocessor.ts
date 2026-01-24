@@ -383,8 +383,15 @@ export function preprocessMarkdown(
 					// Transform to JS block with $ template literal
 					preprocessedLines.push('```js');
 					
-					// Build the command with optional cd prefix
-					let command = asyncBlock.content;
+					// Join multiple lines with ; to execute as a single command chain
+					// Filter out empty lines and comments that start with #
+					const commandLines = asyncBlock.content
+						.split('\n')
+						.map(line => line.trim())
+						.filter(line => line && !line.startsWith('#'));
+					let command = commandLines.join('; ');
+					
+					// Add cd prefix if we have a directory context
 					if (asyncBlock.directoryPrefix) {
 						command = `cd ${asyncBlock.directoryPrefix} && ${command}`;
 					}
