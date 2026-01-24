@@ -54,10 +54,12 @@ pwd
 
 ### 3. File Extraction
 
-Extract code blocks to files using a preceding blockquote with the file path. The file path is wrapped in backticks within the blockquote, and an optional emoji can be added for visual clarity.
+Extract code blocks to files using the `file:` directive in a preceding blockquote. The file path can optionally be wrapped in backticks.
+
+> ⚠️ **Breaking Change**: The `file:` prefix is now **required**. The old syntax `> `filename`` without the prefix no longer works.
 
 ```markdown
-> `package.json`
+> file: `package.json`
 
 ```json
 {
@@ -67,10 +69,10 @@ Extract code blocks to files using a preceding blockquote with the file path. Th
 ```⁠
 ```
 
-Or with an optional emoji:
+Or without backticks:
 
 ```markdown
-> 📄 `package.json`
+> file: package.json
 
 ```json
 {
@@ -80,7 +82,7 @@ Or with an optional emoji:
 ```
 
 **JSON:**
-> `my-project/package.json`
+> file: `my-project/package.json`
 
 ```json
 {
@@ -90,21 +92,21 @@ Or with an optional emoji:
 ```
 
 **TypeScript/JavaScript:**
-> `my-project/index.ts`
+> file: `my-project/index.ts`
 
 ```typescript
 console.log("Hello world")
 ```
 
 **Bash/Shell:**
-> `my-project/.npmrc`
+> file: `my-project/.npmrc`
 
 ```bash
 shared-workspace-lockfile=false
 ```
 
 **Markdown:**
-> `my-project/README.md`
+> file: `my-project/README.md`
 
 ```markdown
 # My Project
@@ -138,6 +140,57 @@ EZXEOF
 ```
 
 This means if a parent directory doesn't exist, the command will fail (as expected). You should create directories first using `mkdir -p` in a bash block.
+
+### 4. Async Bash Execution
+
+Run bash commands asynchronously using the `async:` directive. This is useful for starting background processes like development servers.
+
+> 💡 zx doesn't support background bash tasks with `&`. The `async:` directive solves this by transforming the bash block to a JavaScript `$` template that runs without `await`.
+
+```markdown
+> async: `start dev server`
+
+```bash
+npm run dev
+```⁠
+```
+
+The text after `async:` is optional and serves as documentation only. Both formats work:
+
+```markdown
+> async: `start dev server`
+> async: start dev server
+> async:
+```
+
+**Example:** Running a server in the background while continuing with other tasks:
+
+```markdown
+> async: `start server`
+
+```bash
+npm run dev
+```⁠
+
+```bash
+# This runs immediately, doesn't wait for the server
+echo "Server starting in background..."
+sleep 2
+curl http://localhost:3000
+```⁠
+```
+
+**How it works:** The async directive transforms bash blocks into JavaScript blocks using zx's `$` template literal:
+
+```javascript
+// Input: async bash block with "npm run dev"
+// Output: JavaScript block
+$`npm run dev`
+```
+
+The command runs without `await`, so execution continues immediately. zx automatically awaits all pending promises at the end of the script.
+
+**Important:** The `async:` directive only works with bash/sh/shell blocks. Using it with other languages will result in an error.
 
 ## Installation
 
@@ -214,7 +267,7 @@ const result = preprocessFile('./script.md', {
 
 ## Example
 
-Here's a complete example showing all three features:
+Here's a complete example showing all features:
 
 ```markdown
 # Setup a new project
@@ -226,27 +279,39 @@ cd my-app
 npm init -y
 \`\`\`
 
-> `my-app/package.json`
+> file: `my-app/package.json`
 
 \`\`\`json
 {
   "name": "my-app",
   "version": "1.0.0",
   "scripts": {
-    "start": "node index.js"
+    "start": "node index.js",
+    "dev": "node --watch index.js"
   }
 }
 \`\`\`
 
-> `my-app/index.ts`
+> file: `my-app/index.js`
 
-\`\`\`typescript
-console.log('Hello from ezx!')
+\`\`\`javascript
+const http = require('http');
+const server = http.createServer((req, res) => {
+  res.end('Hello from ezx!');
+});
+server.listen(3000, () => console.log('Server running on port 3000'));
+\`\`\`
+
+> async: `start dev server`
+
+\`\`\`bash
+npm run dev
 \`\`\`
 
 \`\`\`bash
-npm install
-npm start
+# This runs immediately while server starts in background
+sleep 2
+curl http://localhost:3000
 \`\`\`
 
 \`\`\`bash

@@ -1,13 +1,28 @@
 import {readFileSync} from 'node:fs';
 import {marked, Lexer} from 'marked';
 
+/**
+ * Directive types supported in blockquotes
+ */
+export type DirectiveType = 'file' | 'async';
+
+/**
+ * Parsed directive from a blockquote line
+ */
+export interface Directive {
+	type: DirectiveType;
+	value: string; // file path for 'file', description for 'async'
+}
+
 export interface CodeBlock {
 	language: string;
 	content: string;
 	startLine: number;
 	endLine: number;
-	filePath?: string; // File path from preceding blockquote: > `path/to/file.json`
-	precedingBlockquoteLine?: number; // Line number of the blockquote with file path
+	filePath?: string; // File path from file: directive
+	isAsync?: boolean; // Whether this is an async block from async: directive
+	asyncDescription?: string; // Optional description from async: directive
+	precedingBlockquoteLine?: number; // Line number of the blockquote with directive
 }
 
 export interface FileExtraction {
@@ -28,6 +43,15 @@ interface HeredocTransform {
 	filePath: string;
 	content: string;
 	directoryPrefix?: string; // Optional cd prefix for unified directory context
+}
+
+/**
+ * Information about a block that will be transformed to async JS
+ */
+interface AsyncTransform {
+	content: string;
+	directoryPrefix?: string; // Optional cd prefix for unified directory context
+	description?: string; // Optional description for documentation
 }
 
 
@@ -79,22 +103,48 @@ export function sanitizeMarkdownForZx(markdown: string): string {
 }
 
 /**
- * Extract file path from a blockquote line
- * Supports: > `path/to/file.json` or > 📄 `path/to/file.json`
+ * Check if a language is a bash/shell language
  */
-function extractFilePathFromBlockquote(line: string): string | null {
+function isBashLanguage(language: string): boolean {
+	const lang = language.toLowerCase();
+	return lang === 'bash' || lang === 'sh' || lang === 'shell';
+}
+
+/**
+ * Extract directive from a blockquote line
+ *
+ * Supports:
+ * - file: directive: > file: `path/to/file.json` or > file: path/to/file.json
+ * - async: directive: > async: `description` or > async: description or > async:
+ *
+ * Note: The old syntax `> `filename`` without a directive prefix is NO LONGER supported.
+ * This is a breaking change - use `> file: `filename`` instead.
+ */
+function extractDirectiveFromBlockquote(line: string): Directive | null {
 	const trimmed = line.trim();
-	// Match blockquote followed by optional emoji and backtick-wrapped path
-	// e.g., > `package.json` or > 📄 `package.json` or > file: package.json
-	const match = trimmed.match(/^>\s*(?:[\p{Emoji}]?\s*)?`([^`]+)`/u);
-	if (match) {
-		return match[1].trim();
+	
+	// Match file: directive with optional backticks
+	// e.g., > file: `package.json` or > file: package.json
+	const fileMatch = trimmed.match(/^>\s*file:\s*(?:`([^`]+)`|(\S.*?))\s*$/i);
+	if (fileMatch) {
+		const value = (fileMatch[1] || fileMatch[2] || '').trim();
+		if (!value) {
+			return null; // file: requires a path
+		}
+		return {
+			type: 'file',
+			value,
+		};
 	}
 	
-	// Also support: > file: package.json (for backward compatibility with comment style)
-	const fileMatch = trimmed.match(/^>\s*(?:[\p{Emoji}]?\s*)?file[:=]\s*(.+)$/iu);
-	if (fileMatch) {
-		return fileMatch[1].trim();
+	// Match async: directive with optional backticks
+	// e.g., > async: `start server` or > async: start server or > async:
+	const asyncMatch = trimmed.match(/^>\s*async:\s*(?:`([^`]*)`|(.*))?\s*$/i);
+	if (asyncMatch) {
+		return {
+			type: 'async',
+			value: (asyncMatch[1] || asyncMatch[2] || '').trim(),
+		};
 	}
 	
 	return null;
@@ -102,7 +152,7 @@ function extractFilePathFromBlockquote(line: string): string | null {
 
 /**
  * Parse markdown and extract all code blocks with their line numbers
- * Also extracts file path from preceding blockquote if present
+ * Also extracts directives (file: or async:) from preceding blockquote if present
  */
 function parseCodeBlocks(markdown: string): CodeBlock[] {
 	const codeBlocks: CodeBlock[] = [];
@@ -111,7 +161,7 @@ function parseCodeBlocks(markdown: string): CodeBlock[] {
 	let currentBlock: Partial<CodeBlock> = {};
 	let blockStartLine = 0;
 	let precedingBlockquoteLine: number | undefined;
-	let pendingFilePath: string | undefined;
+	let pendingDirective: Directive | undefined;
 
 	for (let i = 0; i < lines.length; i++) {
 		const line = lines[i];
@@ -119,11 +169,28 @@ function parseCodeBlocks(markdown: string): CodeBlock[] {
 		// Check for code block start
 		if (line.match(/^```/)) {
 			if (!inCodeBlock) {
-				// Starting a new code block - assign any pending file path
+				// Starting a new code block
 				const languageMatch = line.match(/^```(\w*)/);
+				const language = languageMatch?.[1] || '';
+				
+				// Validate async directive is only used with bash blocks
+				if (pendingDirective?.type === 'async' && !isBashLanguage(language)) {
+					throw new Error(
+						`[ezx] async: directive error at line ${(precedingBlockquoteLine ?? 0) + 1}\n` +
+						`The async: directive can only be used with bash, sh, or shell code blocks.\n` +
+						`Found: \`\`\`${language || '(no language specified)'}\n` +
+						`\n` +
+						`To fix this, either:\n` +
+						`1. Change the code block language to bash, sh, or shell\n` +
+						`2. Remove the async: directive from the preceding blockquote`
+					);
+				}
+				
 				currentBlock = {
-					language: languageMatch?.[1] || '',
-					filePath: pendingFilePath,
+					language,
+					filePath: pendingDirective?.type === 'file' ? pendingDirective.value : undefined,
+					isAsync: pendingDirective?.type === 'async',
+					asyncDescription: pendingDirective?.type === 'async' ? pendingDirective.value : undefined,
 					precedingBlockquoteLine: precedingBlockquoteLine,
 					content: '',
 					startLine: i,
@@ -131,7 +198,7 @@ function parseCodeBlocks(markdown: string): CodeBlock[] {
 				inCodeBlock = true;
 				blockStartLine = i;
 				precedingBlockquoteLine = undefined;
-				pendingFilePath = undefined; // Reset for next block
+				pendingDirective = undefined; // Reset for next block
 			} else {
 				// Ending the current code block
 				if (
@@ -145,6 +212,8 @@ function parseCodeBlocks(markdown: string): CodeBlock[] {
 						startLine: currentBlock.startLine,
 						endLine: i,
 						filePath: currentBlock.filePath,
+						isAsync: currentBlock.isAsync,
+						asyncDescription: currentBlock.asyncDescription,
 						precedingBlockquoteLine: currentBlock.precedingBlockquoteLine,
 					});
 				}
@@ -152,11 +221,11 @@ function parseCodeBlocks(markdown: string): CodeBlock[] {
 				currentBlock = {};
 			}
 		} else if (!inCodeBlock) {
-			// Look for blockquote with file path (only outside code blocks)
-			const filePath = extractFilePathFromBlockquote(line);
-			if (filePath) {
+			// Look for blockquote with directive (only outside code blocks)
+			const directive = extractDirectiveFromBlockquote(line);
+			if (directive) {
 				precedingBlockquoteLine = i;
-				pendingFilePath = filePath;
+				pendingDirective = directive;
 			}
 		} else if (inCodeBlock && currentBlock.content !== undefined) {
 			// Add line to current block content
@@ -195,13 +264,26 @@ export function preprocessMarkdown(
 	const blocksToTransform: Map<number, string> = new Map();
 	// Map of block indices to transform to heredoc
 	const blocksToHeredoc: Map<number, HeredocTransform> = new Map();
+	// Map of block indices to transform to async JS
+	const blocksToAsync: Map<number, AsyncTransform> = new Map();
 
 	// Process each code block
 	for (let i = 0; i < codeBlocks.length; i++) {
 		const block = codeBlocks[i];
-		const isBash = block.language === 'bash' || block.language === 'sh' || block.language === 'shell';
+		const isBash = isBashLanguage(block.language);
 
-		// Check if this is a file extraction block (file path from preceding blockquote)
+		// Check if this is an async block
+		if (block.isAsync) {
+			// Transform to async JS block
+			blocksToAsync.set(i, {
+				content: block.content.trim(),
+				directoryPrefix: currentDirectory || undefined,
+				description: block.asyncDescription,
+			});
+			continue;
+		}
+
+		// Check if this is a file extraction block (file path from file: directive)
 		if (block.filePath) {
 			// This is a file extraction block - transform to heredoc
 			const fileContent = block.content.trim();
@@ -272,10 +354,10 @@ export function preprocessMarkdown(
 
 	// Build preprocessed markdown
 	const preprocessedLines: string[] = [];
-	// Track lines to skip (blockquote lines that contained file paths)
+	// Track lines to skip (blockquote lines that contained directives)
 	const linesToSkip = new Set<number>();
 	for (const block of codeBlocks) {
-		if (block.precedingBlockquoteLine !== undefined && block.filePath) {
+		if (block.precedingBlockquoteLine !== undefined && (block.filePath || block.isAsync)) {
 			linesToSkip.add(block.precedingBlockquoteLine);
 		}
 	}
@@ -283,7 +365,7 @@ export function preprocessMarkdown(
 	for (let i = 0; i < lines.length; i++) {
 		const line = lines[i];
 
-		// Skip blockquote lines that contained file paths (they were consumed)
+		// Skip blockquote lines that contained directives (they were consumed)
 		if (linesToSkip.has(i)) {
 			continue;
 		}
@@ -294,6 +376,30 @@ export function preprocessMarkdown(
 
 			if (blockIndex !== -1) {
 				const block = codeBlocks[blockIndex];
+
+				// Check if this block should be transformed to async JS
+				if (blocksToAsync.has(blockIndex)) {
+					const asyncBlock = blocksToAsync.get(blockIndex)!;
+					// Transform to JS block with $ template literal
+					preprocessedLines.push('```js');
+					
+					// Build the command with optional cd prefix
+					let command = asyncBlock.content;
+					if (asyncBlock.directoryPrefix) {
+						command = `cd ${asyncBlock.directoryPrefix} && ${command}`;
+					}
+					
+					// Escape backticks in the command for the template literal
+					const escapedCommand = command.replace(/`/g, '\\`');
+					
+					// Output the $ template literal (fire-and-forget, no await)
+					// zx will await all pending promises at the end
+					preprocessedLines.push(`$\`${escapedCommand}\``);
+					preprocessedLines.push('```');
+					// Skip to the closing ```
+					i = block.endLine;
+					continue;
+				}
 
 				// Check if this block should be transformed to heredoc
 				if (blocksToHeredoc.has(blockIndex)) {

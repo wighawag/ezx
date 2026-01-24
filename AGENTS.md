@@ -91,15 +91,17 @@ pwd  # Still in my-project!
 
 ### 3. File Extraction
 
-Blockquotes with backtick-wrapped paths create files:
+Use the `file:` directive in a blockquote to create files:
 
 ```markdown
-> `package.json`
+> file: `package.json`
 
 ```json
 {"name": "my-project"}
 ```⁠
 ```
+
+> ⚠️ **Breaking Change**: The `file:` prefix is now required. The old syntax `> `filename`` no longer works.
 
 **Implementation:** Transformed to bash heredocs:
 ```bash
@@ -107,6 +109,27 @@ cat > 'package.json' << 'EZXEOF'
 {"name": "my-project"}
 EZXEOF
 ```
+
+### 4. Async Bash Execution
+
+Use the `async:` directive to run bash commands asynchronously (fire-and-forget):
+
+```markdown
+> async: `start dev server`
+
+```bash
+npm run dev
+```⁠
+```
+
+**Implementation:** Transformed to JavaScript with zx's `$` template (without await):
+```javascript
+$`npm run dev`
+```
+
+This allows the command to run in the background while the script continues. zx automatically awaits all pending promises at the end.
+
+**Note:** The `async:` directive only works with bash/sh/shell blocks.
 
 ## Dependencies
 

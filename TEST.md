@@ -31,7 +31,7 @@ cd my-rocketh-project
 
 Just create a new `package.json` file with the following content:
 
-> `package.json`
+> file: `package.json`
 ```json
 {
   "name": "my-rocketh-project",
@@ -55,7 +55,7 @@ mkdir src
 
 Then we create a new solidity file in that folder.
 
-> `src/Counter.sol`
+> file: `src/Counter.sol`
 ```solidity
 // SPDX-License-Identifier: UNLICENSED
 pragma solidity ^0.8.28;
@@ -82,7 +82,7 @@ contract Counter {
 
 We then create a new hardhat config file.
 
-> `hardhat.config.ts`
+> file: `hardhat.config.ts`
 ```typescript
 import {defineConfig} from 'hardhat/config';
 import HardhatDeploy from "hardhat-deploy";
@@ -136,7 +136,7 @@ mkdir rocketh
 
 We create the rocketh config file.
 
-> `rocketh/config.ts`
+> file: `rocketh/config.ts`
 ```typescript
 /// ----------------------------------------------------------------------------
 // Typed Config
@@ -184,7 +184,7 @@ export type {Extensions, Accounts, Data};
 
 the rocketh deploy file is used to export the deploy script function and the artifacts.
 
-> `rocketh/deploy.ts`
+> file: `rocketh/deploy.ts`
 ```typescript
 import {type Accounts, type Data, type Extensions, extensions} from './config.js';
 
@@ -205,7 +205,7 @@ export {deployScript};
 
 the environment file is used to export the environment functions, to be used in test and scripts.
 
-> `rocketh/environment.ts`
+> file: `rocketh/environment.ts`
 ```typescript
 import {type Accounts, type Data, type Extensions, extensions} from './config.js';
 import {setupEnvironmentFromFiles} from '@rocketh/node';
@@ -230,7 +230,7 @@ mkdir deploy
 
 And here we create a basic deploy script for our Counter contract.
 
-> `deploy/deploy_Counter.ts`
+> file: `deploy/deploy_Counter.ts`
 ```typescript
 import {deployScript, artifacts} from '../rocketh/deploy.js';
 
