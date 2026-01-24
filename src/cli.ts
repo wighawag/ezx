@@ -18,6 +18,7 @@ program
 	.option('--postfix <command>', 'postfix all commands')
 	.option('--cwd <path>', 'set current directory')
 	.option('-s, --sections <headings...>', 'execute only sections under these headings (e.g., "Create a new project")')
+	.option('-p, --preprocess-only [file]', 'output preprocessed markdown without executing (optionally to a file)')
 	.action(async (script: string, options: RunMarkdownOptions) => {
 		try {
 			await runMarkdownFile(script, options);

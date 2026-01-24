@@ -16,6 +16,7 @@ export interface RunMarkdownOptions {
 	cwd?: string;
 	preferLocal?: boolean;
 	sections?: string[]; // Execute only sections under these headings
+	preprocessOnly?: boolean | string; // Output preprocessed markdown without executing (optionally to file path)
 }
 
 /**
@@ -121,6 +122,18 @@ export async function runMarkdown(markdown: string | Buffer, options: RunMarkdow
 		// Sanitize markdown to prevent zx from misinterpreting indented prose as code
 		// This handles edge cases like indented code blocks within list items
 		const sanitizedMarkdown = sanitizeMarkdownForZx(preprocessedMarkdown);
+
+		// If preprocessOnly is set, output the preprocessed markdown and return
+		if (options.preprocessOnly) {
+			if (typeof options.preprocessOnly === 'string') {
+				// Write to file
+				await fs.writeFile(options.preprocessOnly, sanitizedMarkdown);
+			} else {
+				// Output to stdout
+				console.log(sanitizedMarkdown);
+			}
+			return;
+		}
 
 		// Transform markdown to JavaScript
 		let jsCode = transformMarkdown(sanitizedMarkdown);
