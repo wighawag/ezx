@@ -76,8 +76,13 @@ export function sanitizeMarkdownForZx(markdown: string): string {
 		for (const token of tokenArray) {
 			if (token.type === 'code') {
 				// Keep fenced code blocks - marked handles indentation correctly
+				// Remove bracketed modifiers like [npm], [pnpm], etc. but preserve zx's modifiers like skip
+				// zx doesn't understand bracketed modifiers and will skip code blocks with them
+				const langTag = token.lang || '';
+				// Remove bracketed modifiers using regex to match [anything]
+				const cleanLangTag = langTag.replace(/\s*\[.*?\]\s*/g, ' ').trim();
 				const fence = '```';
-				output.push(`${fence}${token.lang || ''}`);
+				output.push(`${fence}${cleanLangTag}`);
 				output.push(token.text);
 				output.push(fence);
 				output.push(''); // Empty line after for readability
@@ -114,7 +119,8 @@ function isBashLanguage(language: string): boolean {
 /**
  * Parse language tag and extract modifiers
  * e.g., "bash sleep:3 skip" -> { language: "bash", languageTag: "bash skip", sleepSeconds: 3 }
- * The languageTag has sleep:N removed but preserves other modifiers like skip
+ * e.g., "bash [npm] skip" -> { language: "bash", languageTag: "bash skip", sleepSeconds: undefined }
+ * The languageTag has sleep:N and bracketed modifiers like [npm] removed, but preserves zx's modifiers like skip
  */
 function parseLanguageTag(langTag: string): { language: string; languageTag: string; sleepSeconds?: number } {
 	const parts = langTag.trim().split(/\s+/);
@@ -127,13 +133,17 @@ function parseLanguageTag(langTag: string): { language: string; languageTag: str
 		const sleepMatch = part.match(/^sleep:(\d+)$/i);
 		if (sleepMatch) {
 			sleepSeconds = parseInt(sleepMatch[1], 10);
+		} else if (part.match(/^\[.*?\]$/)) {
+			// Skip bracketed modifiers like [npm], [pnpm], etc.
+			// These are not understood by zx and cause code blocks to be skipped
+			continue;
 		} else {
 			// Preserve other modifiers like 'skip'
 			otherModifiers.push(part);
 		}
 	}
 
-	// Build language tag without sleep:N
+	// Build language tag without sleep:N and bracketed modifiers
 	const languageTag = [language, ...otherModifiers].join(' ');
 
 	return { language, languageTag, sleepSeconds };
