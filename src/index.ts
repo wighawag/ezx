@@ -17,6 +17,7 @@ export interface RunMarkdownOptions {
 	preferLocal?: boolean;
 	sections?: string[]; // Execute only sections under these headings
 	preprocessOnly?: boolean | string; // Output preprocessed markdown without executing (optionally to file path)
+	standalone?: boolean; // Create .npmrc file after setting directory for standalone npm mode in monorepos
 }
 
 /**
@@ -117,6 +118,7 @@ export async function runMarkdown(markdown: string | Buffer, options: RunMarkdow
 		// Preprocess markdown with ezx enhancements
 		const {preprocessedMarkdown} = preprocessMarkdown(markdownContent, {
 			cwd: options.cwd || process.cwd(),
+			standalone: options.standalone,
 		});
 
 		// Sanitize markdown to prevent zx from misinterpreting indented prose as code

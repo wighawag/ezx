@@ -19,6 +19,7 @@ program
 	.option('--cwd <path>', 'set current directory')
 	.option('-s, --sections <headings...>', 'execute only sections under these headings (e.g., "Create a new project")')
 	.option('-p, --preprocess-only [file]', 'output preprocessed markdown without executing (optionally to a file)')
+	.option('--standalone', 'create .npmrc file after setting directory for standalone npm mode in monorepos')
 	.action(async (script: string, options: RunMarkdownOptions) => {
 		try {
 			await runMarkdownFile(script, options);

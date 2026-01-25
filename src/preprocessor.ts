@@ -292,9 +292,9 @@ function isDirectorySetCommand(line: string): boolean {
  */
 export function preprocessMarkdown(
 	input: string,
-	options: {cwd?: string} = {},
+	options: {cwd?: string; standalone?: boolean} = {},
 ): PreprocessResult {
-	const {cwd = process.cwd()} = options;
+	const {cwd = process.cwd(), standalone = false} = options;
 	const lines = input.split('\n');
 	const codeBlocks = parseCodeBlocks(input);
 	const extractedFiles: FileExtraction[] = [];
@@ -308,6 +308,8 @@ export function preprocessMarkdown(
 	const blocksToHeredoc: Map<number, HeredocTransform> = new Map();
 	// Map of block indices to transform to async JS
 	const blocksToAsync: Map<number, AsyncTransform> = new Map();
+	// Track where we need to insert .npmrc after directory set
+	const npmrcInsertBlocks: Set<number> = new Set();
 
 	// Process each code block
 	for (let i = 0; i < codeBlocks.length; i++) {
@@ -378,6 +380,10 @@ export function preprocessMarkdown(
 									currentDirectory = newPath;
 								}
 								justSetDirectory = true;
+								// If standalone mode is enabled, mark this block for .npmrc insertion
+								if (standalone) {
+									npmrcInsertBlocks.add(i);
+								}
 								break;
 							}
 						}
@@ -496,6 +502,18 @@ export function preprocessMarkdown(
 				// Output the block content
 				if (block.content) {
 					preprocessedLines.push(block.content);
+				}
+
+				// If standalone mode is enabled and this block set the directory, append .npmrc creation
+				if (npmrcInsertBlocks.has(blockIndex)) {
+					preprocessedLines.push('');
+					preprocessedLines.push('cat > .npmrc << \'EZXEOF\'');
+					preprocessedLines.push('# Disable workspace awareness for test project');
+					preprocessedLines.push('# This ensures that pnpm install and other commands work in standalone mode');
+					preprocessedLines.push('enable-pre-post-scripts=true');
+					preprocessedLines.push('shamefully-hoist=false');
+					preprocessedLines.push('strict-peer-dependencies=false');
+					preprocessedLines.push('EZXEOF');
 				}
 
 				// Skip to the closing ```
