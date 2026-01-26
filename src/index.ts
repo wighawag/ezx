@@ -146,10 +146,28 @@ export async function runMarkdown(markdown: string | Buffer, options: RunMarkdow
 		// This will work regardless of where ezx is installed (local, global, or as a dependency)
 		const zxGlobalsPath = await import.meta.resolve('zx/globals');
 
+		// Generate temp file path first so we can include it in the preamble for cleanup
+		const cwd = options.cwd || process.cwd();
+		const tempFile = path.join(cwd, `.ezx-${randomBytes(8).toString('hex')}.mjs`);
+
 		// Prepend globals import to make $, fs, path, etc. available in the script context
 		// Use the resolved absolute path to ensure zx is found
 		// Also suppress the DEP0190 deprecation warning from Node.js about shell args
+		// And add SIGINT handler to exit cleanly when user presses Ctrl+C
 		let preamble = `process.noDeprecation = true;\n\nawait import('${zxGlobalsPath}')\n\n`;
+		
+		// Store temp file path for cleanup in SIGINT handler
+		preamble += `const __ezx_temp_file = '${tempFile.replace(/\\/g, '\\\\').replace(/'/g, "\\'")}';\n\n`;
+		
+		// Add SIGINT handler to exit cleanly - this prevents zx from throwing errors when Ctrl+C is pressed
+		preamble += `process.on('SIGINT', () => {\n`;
+		preamble += `  if (typeof __ezx_async_processes !== 'undefined') {\n`;
+		preamble += `    __ezx_async_processes.forEach(p => p.kill('SIGKILL'));\n`;
+		preamble += `  }\n`;
+		preamble += `  // Clean up temp file - fs is available from zx/globals\n`;
+		preamble += `  try { fs.rmSync(__ezx_temp_file, { force: true }); } catch {}\n`;
+		preamble += `  process.exit(0);\n`;
+		preamble += `});\n\n`;
 		
 		// If killOnComplete is enabled and there are async blocks, add process tracking
 		if (options.killOnComplete && hasAsyncBlocks) {
@@ -167,8 +185,6 @@ export async function runMarkdown(markdown: string | Buffer, options: RunMarkdow
 		// Write to temp file in current directory (not tmpdir) so zx can be resolved
 		// Node's module resolution looks for package.json starting from the file's directory,
 		// so the temp file needs to be in a location that has access to node_modules
-		const cwd = options.cwd || process.cwd();
-		const tempFile = path.join(cwd, `.ezx-${randomBytes(8).toString('hex')}.mjs`);
 		await fs.writeFile(tempFile, jsCode);
 
 		// Register cleanup handlers for various exit scenarios
