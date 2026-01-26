@@ -452,9 +452,9 @@ export function preprocessMarkdown(
 					// If killOnComplete is enabled, push to tracking array so we can kill it later
 					if (killOnComplete) {
 						// Wrap in a block to create a temp variable, attach .catch() to suppress
-						// ONLY SIGKILL/SIGTERM errors (when we kill the process), then push to tracking array
+						// ONLY SIGKILL/SIGTERM/SIGINT errors (when we kill the process), then push to tracking array
 						// Other errors (command failures, etc.) should still be reported
-						preprocessedLines.push(`{ const __p = $\`${escapedCommand}\`; __p.catch((e) => { if (e?.signal !== 'SIGKILL' && e?.signal !== 'SIGTERM') throw e; }); __ezx_async_processes.push(__p); }`);
+						preprocessedLines.push(`{ const __p = $\`${escapedCommand}\`; __p.catch((e) => { if (e?.signal !== 'SIGKILL' && e?.signal !== 'SIGTERM' && e?.signal !== 'SIGINT') throw e; }); __ezx_async_processes.push(__p); }`);
 					} else {
 						// zx will await all pending promises at the end
 						preprocessedLines.push(`$\`${escapedCommand}\``);
