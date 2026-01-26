@@ -35,6 +35,7 @@ export interface FileExtraction {
 export interface PreprocessResult {
 	preprocessedMarkdown: string;
 	extractedFiles: FileExtraction[];
+	hasAsyncBlocks: boolean; // Whether the markdown contains async blocks
 }
 
 /**
@@ -292,9 +293,9 @@ function isDirectorySetCommand(line: string): boolean {
  */
 export function preprocessMarkdown(
 	input: string,
-	options: {cwd?: string; standalone?: boolean} = {},
+	options: {cwd?: string; standalone?: boolean; killOnComplete?: boolean} = {},
 ): PreprocessResult {
-	const {cwd = process.cwd(), standalone = false} = options;
+	const {cwd = process.cwd(), standalone = false, killOnComplete = false} = options;
 	const lines = input.split('\n');
 	const codeBlocks = parseCodeBlocks(input);
 	const extractedFiles: FileExtraction[] = [];
@@ -448,8 +449,13 @@ export function preprocessMarkdown(
 					const escapedCommand = command.replace(/`/g, '\\`');
 					
 					// Output the $ template literal (fire-and-forget, no await)
-					// zx will await all pending promises at the end
-					preprocessedLines.push(`$\`${escapedCommand}\``);
+					// If killOnComplete is enabled, push to tracking array so we can kill it later
+					if (killOnComplete) {
+						preprocessedLines.push(`__ezx_async_processes.push($\`${escapedCommand}\`)`);
+					} else {
+						// zx will await all pending promises at the end
+						preprocessedLines.push(`$\`${escapedCommand}\``);
+					}
 					preprocessedLines.push('```');
 					// Skip to the closing ```
 					i = block.endLine;
@@ -528,9 +534,13 @@ export function preprocessMarkdown(
 		}
 	}
 
+	// Check if there are any async blocks
+	const hasAsyncBlocks = blocksToAsync.size > 0;
+
 	return {
 		preprocessedMarkdown: preprocessedLines.join('\n'),
 		extractedFiles,
+		hasAsyncBlocks,
 	};
 }
 

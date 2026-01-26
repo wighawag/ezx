@@ -129,6 +129,8 @@ $`npm run dev`
 
 This allows the command to run in the background while the script continues. zx automatically awaits all pending promises at the end.
 
+**Kill on Complete:** Use `--kill-on-complete` (or `-k`) CLI option to kill all async processes when the script completes instead of waiting for them. This is useful for development servers that should be terminated after the script runs.
+
 **Note:** The `async:` directive only works with bash/sh/shell blocks.
 
 ## Dependencies

@@ -190,6 +190,15 @@ $`npm run dev`
 
 The command runs without `await`, so execution continues immediately. zx automatically awaits all pending promises at the end of the script.
 
+**Kill on Complete:** Use the `--kill-on-complete` (or `-k`) CLI option to kill all async processes when the script completes, instead of waiting for them:
+
+```bash
+ezx --kill-on-complete script.md
+ezx -k script.md
+```
+
+This is useful for development servers or other long-running processes that should be terminated after the script runs.
+
 **Important:** The `async:` directive only works with bash/sh/shell blocks. Using it with other languages will result in an error.
 
 ## Installation
@@ -339,6 +348,7 @@ Run markdown content or file with CLI-like options.
 - `cwd` (string) - Current working directory
 - `preferLocal` (boolean) - Prefer locally installed packages
 - `sections` (string[]) - Execute only sections under these heading titles
+- `killOnComplete` (boolean) - Kill all spawned async processes when script completes
 
 ### `runMarkdownFile(filePath, options)`
 
