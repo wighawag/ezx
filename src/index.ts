@@ -159,7 +159,8 @@ export async function runMarkdown(markdown: string | Buffer, options: RunMarkdow
 		
 		// If killOnComplete is enabled and there are async blocks, add cleanup code
 		if (options.killOnComplete && hasAsyncBlocks) {
-			jsCode += `\n\n// Kill all async processes on completion\n__ezx_async_processes.forEach(p => p.kill());\n`;
+			// Use SIGKILL to terminate immediately without giving processes time to print error messages
+			jsCode += `\n\n// Kill all async processes on completion\n__ezx_async_processes.forEach(p => p.kill('SIGKILL'));\n`;
 		}
 
 		// Write to temp file in current directory (not tmpdir) so zx can be resolved
