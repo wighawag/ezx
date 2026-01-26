@@ -148,7 +148,8 @@ export async function runMarkdown(markdown: string | Buffer, options: RunMarkdow
 
 		// Prepend globals import to make $, fs, path, etc. available in the script context
 		// Use the resolved absolute path to ensure zx is found
-		let preamble = `await import('${zxGlobalsPath}')\n\n`;
+		// Also suppress the DEP0190 deprecation warning from Node.js about shell args
+		let preamble = `process.noDeprecation = true;\n\nawait import('${zxGlobalsPath}')\n\n`;
 		
 		// If killOnComplete is enabled and there are async blocks, add process tracking
 		if (options.killOnComplete && hasAsyncBlocks) {
