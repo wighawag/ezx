@@ -183,7 +183,7 @@ This ensures zx's regex parser won't misinterpret content.
 
 ### Escaping for zx's template literal
 
-zx's `transformMarkdown` turns a bash/sh/shell block into `` await $` `` + the raw lines + `` ` `` with no escaping, and zx builds the command from the template's cooked strings. So every body ezx emits inside an executed bash fence, and every `async:` command, goes through `escapeForZxTemplate()` (escapes `\`, `` ` ``, `${` and lone `\r`). Do not emit file content through a shell: `file:` blocks use `fs.writeFileSync` with `JSON.stringify`. Only the `.npmrc` written by `--standalone` still uses a heredoc with the `EZXEOF` delimiter (fixed content).
+zx's `transformMarkdown` turns a bash/sh/shell block into `` await $` `` + the raw lines + `` ` `` with no escaping, and zx builds the command from the template's cooked strings. ezx therefore never leaves an executed bash fence to zx: it emits a `js` block with its own `` await $` `` + `escapeForZxTemplate(body)` + `` ` `` (escapes `\`, `` ` ``, `${` and lone `\r`), and does the same for `async:` commands. This also keeps ezx correct if zx starts escaping bash fences itself (google/zx#1529), which would otherwise double-escape. Blocks containing `\${` or `` \` `` get a migration warning (`PreprocessResult.warnings`). Do not emit file content through a shell: `file:` blocks use `fs.writeFileSync` with `JSON.stringify`. Only the `.npmrc` written by `--standalone` still uses a heredoc with the `EZXEOF` delimiter (fixed content).
 
 ### Directory Context Handling
 

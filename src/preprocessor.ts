@@ -36,6 +36,7 @@ export interface PreprocessResult {
 	preprocessedMarkdown: string;
 	extractedFiles: FileExtraction[];
 	hasAsyncBlocks: boolean; // Whether the markdown contains async blocks
+	warnings: string[]; // Non-fatal hints about the document, meant for stderr
 }
 
 /**
@@ -114,7 +115,8 @@ export function sanitizeMarkdownForZx(markdown: string): string {
  * JavaScript template literal and comes out unchanged.
  *
  * zx's `transformMarkdown` turns every bash/sh/shell block into
- * `await $\`` + raw lines + `\``, and zx builds the command from the template's
+ * `await $\`` + raw lines + `\`` without escaping; ezx emits that same shape
+ * itself with the body escaped. zx builds the command from the template's
  * COOKED strings (`buildCmd` concatenates `pieces[0]`, `pieces[1]`, ... and never
  * reads `pieces.raw`). So the only characters that need escaping are the ones a
  * template literal interprets: `\` (escape sequences), a backtick (end of the
@@ -133,10 +135,30 @@ export function escapeForZxTemplate(text: string): string {
  * Whether zx will execute a fenced block with this info string as a shell command.
  * Mirrors zx's own fence regex: only an info string that is exactly `sh`, `shell`
  * or `bash` (case-sensitive) runs; anything else (`bash skip`, `BASH`, ...) is
- * turned into comments by zx and must be left untouched.
+ * turned into comments by zx and must be left untouched. ezx rewrites the
+ * blocks that match into `js` blocks with an escaped `await $\`...\``.
  */
 function zxRunsAsBash(languageTag: string): boolean {
 	return /^(sh|shell|bash)$/.test(languageTag);
+}
+
+/**
+ * Until 0.1.0, ezx (like zx) let JavaScript interpret the text of bash and
+ * file blocks, so authors wrote `\${` or a backslash-escaped backtick to get `${`
+ * or a backtick through. That text is now passed on unchanged, backslash
+ * included, which silently changes what such a block does. Record a warning for
+ * the first such line of a block; it may also be intentional, hence not an error.
+ */
+function warnAboutBackslashWorkaround(block: CodeBlock, kind: string, warnings: string[]): void {
+	const offending = block.content.split('\n').find((line) => /\\(\$\{|`)/.test(line));
+	if (offending === undefined) {
+		return;
+	}
+	warnings.push(
+		`[ezx] warning: ${kind} at line ${block.startLine + 1} contains "\\\${" or "\\\`": ` +
+			`since ezx 0.1.0 it is passed on as written, backslash included. ` +
+			`If the backslash was a workaround for the old escaping bug, remove it.\n  ${offending.trim()}`,
+	);
 }
 
 /**
@@ -351,6 +373,7 @@ export function preprocessMarkdown(
 	const lines = input.split('\n');
 	const codeBlocks = parseCodeBlocks(input);
 	const extractedFiles: FileExtraction[] = [];
+	const warnings: string[] = [];
 
 	// Track the current directory context
 	let currentDirectory: string | null = null;
@@ -371,6 +394,7 @@ export function preprocessMarkdown(
 
 		// Check if this is an async block
 		if (block.isAsync) {
+			warnAboutBackslashWorkaround(block, 'async: block', warnings);
 			// Transform to async JS block
 			blocksToAsync.set(i, {
 				content: block.content.trim(),
@@ -384,6 +408,7 @@ export function preprocessMarkdown(
 		if (block.filePath) {
 			// This is a file extraction block - transform into a file write
 			const fileContent = block.content.trim();
+			warnAboutBackslashWorkaround(block, `file: block (${block.filePath})`, warnings);
 			extractedFiles.push({
 				filePath: block.filePath,
 				content: fileContent,
@@ -542,7 +567,10 @@ export function preprocessMarkdown(
 				const origLangMatch = line.match(/^\s*```(.*)$/);
 				const origFullTag = origLangMatch?.[1] || '';
 				const { languageTag } = parseLanguageTag(origFullTag);
-				preprocessedLines.push(`\`\`\`${languageTag}`);
+				const runsAsBash = zxRunsAsBash(languageTag);
+				if (runsAsBash) {
+					warnAboutBackslashWorkaround(block, 'bash block', warnings);
+				}
 
 				const bodyLines: string[] = [];
 
@@ -574,12 +602,26 @@ export function preprocessMarkdown(
 					bodyLines.push('EZXEOF');
 				}
 
-				if (bodyLines.length > 0) {
-					const body = bodyLines.join('\n');
-					// zx pastes a bash block's lines verbatim between the backticks of
-					// `await $\`...\``, so escape them for that template literal: the shell
-					// then receives exactly the text written in the Markdown.
-					preprocessedLines.push(zxRunsAsBash(languageTag) ? escapeForZxTemplate(body) : body);
+				if (runsAsBash) {
+					// Emit the `await $\`...\`` that zx would generate for a bash block,
+					// but with the body escaped for the template literal, so the shell
+					// receives exactly the text written in the Markdown. Doing it here,
+					// instead of leaving a bash fence to zx's transformMarkdown, keeps the
+					// result correct whether or not a future zx escapes bash blocks itself
+					// (which would otherwise escape them a second time).
+					preprocessedLines.push('```js');
+					preprocessedLines.push('await $`');
+					if (bodyLines.length > 0) {
+						preprocessedLines.push(escapeForZxTemplate(bodyLines.join('\n')));
+					}
+					preprocessedLines.push('`');
+				} else {
+					// Not executed by zx as a shell command (js block, skipped block,
+					// documentation-only language): keep the block as written.
+					preprocessedLines.push(`\`\`\`${languageTag}`);
+					if (bodyLines.length > 0) {
+						preprocessedLines.push(bodyLines.join('\n'));
+					}
 				}
 
 				// Skip to the closing ```
@@ -601,6 +643,7 @@ export function preprocessMarkdown(
 		preprocessedMarkdown: preprocessedLines.join('\n'),
 		extractedFiles,
 		hasAsyncBlocks,
+		warnings,
 	};
 }
 

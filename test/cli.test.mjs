@@ -83,6 +83,33 @@ test('directory context applies to file extraction and bash blocks with special 
 	assert.equal(run.exists('stripped.txt'), false);
 });
 
+test('bash blocks do not depend on zx escaping (or not) its own bash fences', (t) => {
+	// ezx emits bash blocks as js blocks with `await $`...``, so a zx release that
+	// starts escaping bash fences itself cannot escape ezx's output a second time.
+	const run = runFixture('special-bash.md', ['--preprocess-only']);
+	t.after(run.cleanup);
+	assertOk(run.result);
+	assert.doesNotMatch(run.result.stdout, /^(`{3,}|~{3,})(sh|shell|bash)$/m);
+	assert.match(run.result.stdout, /^await \$`$/m);
+});
+
+test('a backslash before ${ or a backtick produces a migration warning', (t) => {
+	const run = runFixture('special-file.md');
+	t.after(run.cleanup);
+	assertOk(run.result);
+	assert.match(run.result.stderr, /\[ezx\] warning: file: block \(out\/sample\.ts\) at line \d+/);
+
+	const clean = runFixture('special-bash.md');
+	t.after(clean.cleanup);
+	assertOk(clean.result);
+	assert.doesNotMatch(clean.result.stderr, /\[ezx\] warning/);
+
+	const quiet = runFixture('special-file.md', ['--quiet']);
+	t.after(quiet.cleanup);
+	assertOk(quiet.result);
+	assert.doesNotMatch(quiet.result.stderr, /\[ezx\] warning/);
+});
+
 test('file extraction fails when the parent directory does not exist', (t) => {
 	const run = runFixture('missing-parent.md');
 	t.after(run.cleanup);

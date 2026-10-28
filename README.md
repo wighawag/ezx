@@ -208,16 +208,25 @@ zx runs a `bash`/`sh`/`shell` block by pasting its lines between the backticks o
 
 ezx guarantees that the text of a block reaches its destination unchanged:
 
-- **Bash blocks and `async:` blocks:** ezx escapes `\`, `` ` `` and `${` for the template literal, so the shell receives exactly what is written in the Markdown. `` `cmd` `` is a shell command substitution, `${VAR}` is a shell expansion, and `\n` is a backslash followed by `n`, as in any shell script.
+- **Bash blocks and `async:` blocks:** ezx generates the `` await $`...` `` itself (as a `js` block) and escapes `\`, `` ` `` and `${` for the template literal, so the shell receives exactly what is written in the Markdown. Because ezx no longer leaves bash fences to zx, this stays correct if a future zx release starts escaping bash blocks itself. `` `cmd` `` is a shell command substitution, `${VAR}` is a shell expansion, and `\n` is a backslash followed by `n`, as in any shell script.
 - **`file:` blocks:** the file is written with `fs` from a JSON-encoded string, without going through a shell, so any content can be extracted, including TypeScript template literal types such as `` `0x${string}` ``, comments with backticks, backslashes, and a line reading `EZXEOF`.
 
 This means a bash block can no longer use `${...}` to interpolate a JavaScript value, which in zx happened by accident of the transformation. Use a `js` block with `` $`...` `` when you need that.
+
+#### Migrating from ezx 0.0.x
+
+This is a breaking change for documents written around the old behaviour:
+
+- **Backslash workarounds now reach the shell or the file.** If you wrote `\${` or `` \` `` to get `${` or a backtick through, the backslash is now kept, so the shell sees an escaped (literal) `${` or backtick, and an extracted file contains the backslash. Remove the backslash. ezx prints a warning to stderr (unless `--quiet`) for every bash, `async:` or `file:` block containing `\${` or `` \` ``, since such a backslash may also be intentional.
+- **Doubled backslashes are no longer halved.** Backslash sequences used to be interpreted by JavaScript first, so `\\` produced one backslash and `\n` a newline. They are now passed on as written. If you doubled backslashes to compensate, undo it. Shell line continuations (a `\` at the end of a line) behave as before.
+- **`${jsVariable}` in a bash block** is no longer a JavaScript interpolation. Under zx's default `set -u` it usually fails with "unbound variable". Move the command to a `js` block: `` await $`echo ${jsVariable}` ``.
+- **`file:` blocks are not written by a shell.** `--prefix`, `--postfix` and `--shell` do not apply to them, and `--verbose` does not print a command for them.
 
 ### Known pitfalls
 
 - **zx executes `js`, `javascript`, `ts` and `typescript` blocks.** zx runs every block tagged exactly `js`, `javascript`, `ts` or `typescript` as JavaScript (TypeScript blocks are not type-stripped). A TypeScript snippet shown for documentation, that is not a `file:` block, usually crashes the script with a syntax error. Mark such blocks so zx ignores them, by adding any word after the language (`` ```ts no-eval ``) or by using a tag zx does not run (`` ```tsx ``, `` ```TypeScript ``). Blocks with any other language (`json`, `text`, `solidity`, ...) are never executed.
 - **Only exact fence tags run.** A bash block runs only when its tag is exactly `bash`, `sh` or `shell` after ezx removes `sleep:N` and `[label]` modifiers. Any other word after the language (`` ```bash skip ``) makes zx ignore the block.
-- **`--preprocess-only` shows zx's input.** The printed Markdown is what ezx hands to zx, so bash block bodies appear with their backticks, `${` and backslashes escaped, and `file:` blocks appear as `js` blocks calling `fs.writeFileSync`.
+- **`--preprocess-only` shows zx's input.** The printed Markdown is what ezx hands to zx: executed bash blocks appear as `js` blocks containing `` await $`...` `` with their backticks, `${` and backslashes escaped, and `file:` blocks appear as `js` blocks calling `fs.writeFileSync`.
 - **Multi-line `async:` blocks become one line.** Their lines are joined with `; `, so constructs that span lines (heredocs, `if`/`fi` written over several lines with comments) may not work in an `async:` block.
 
 ## Installation
@@ -389,6 +398,8 @@ Preprocess markdown content.
 **Returns:** PreprocessResult
 - `preprocessedMarkdown` (string) - The preprocessed markdown, ready for zx: file directive blocks are transformed into `js` blocks that write the file, and bash block bodies are escaped for zx's template literal
 - `extractedFiles` (FileExtraction[]) - Array of extracted file information (for informational purposes only)
+- `hasAsyncBlocks` (boolean) - Whether the markdown contains `async:` blocks
+- `warnings` (string[]) - Non-fatal hints, such as the migration warning about `\${` and `` \` ``; `runMarkdown` prints them to stderr unless `quiet` is set
 
 ### `preprocessFile(filePath, options)`
 
