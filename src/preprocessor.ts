@@ -370,6 +370,10 @@ export function preprocessMarkdown(
 	options: {cwd?: string; standalone?: boolean; killOnComplete?: boolean} = {},
 ): PreprocessResult {
 	const {cwd = process.cwd(), standalone = false, killOnComplete = false} = options;
+	// Normalise line endings (CRLF and lone CR count as line endings in Markdown).
+	// Otherwise a CRLF document's fence lines ("```bash\r") are not recognised and
+	// its blocks keep a trailing \r on every line.
+	input = input.replace(/\r\n?/g, '\n');
 	const lines = input.split('\n');
 	const codeBlocks = parseCodeBlocks(input);
 	const extractedFiles: FileExtraction[] = [];

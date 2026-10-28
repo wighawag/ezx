@@ -4,7 +4,7 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import {spawnSync} from 'node:child_process';
-import {mkdtempSync, readFileSync, existsSync, copyFileSync, rmSync} from 'node:fs';
+import {mkdtempSync, mkdirSync, readFileSync, writeFileSync, existsSync, copyFileSync, rmSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import {join, dirname} from 'node:path';
 import {fileURLToPath} from 'node:url';
@@ -13,9 +13,14 @@ const here = dirname(fileURLToPath(import.meta.url));
 const cli = join(here, '..', 'dist', 'cli.js');
 const fixtures = join(here, 'fixtures');
 
-function runFixture(name, args = [], {timeout = 60_000} = {}) {
+function runFixture(name, args = [], {timeout = 60_000, crlf = false, setup} = {}) {
 	const dir = mkdtempSync(join(tmpdir(), 'ezx-test-'));
-	copyFileSync(join(fixtures, name), join(dir, name));
+	if (crlf) {
+		writeFileSync(join(dir, name), readFileSync(join(fixtures, name), 'utf8').replace(/\n/g, '\r\n'));
+	} else {
+		copyFileSync(join(fixtures, name), join(dir, name));
+	}
+	setup?.(dir);
 	const started = Date.now();
 	const result = spawnSync(process.execPath, [cli, name, ...args], {
 		cwd: dir,
@@ -81,6 +86,40 @@ test('directory context applies to file extraction and bash blocks with special 
 	assert.equal(run.read('ctx/sub/relative.txt'), 'relative to `ctx` ${HOME} \\n\n');
 	assert.equal(run.read('ctx/here.txt'), 'in ctx ctx ok\n');
 	assert.equal(run.exists('stripped.txt'), false);
+});
+
+test('CRLF documents run like LF documents and write LF files', (t) => {
+	const run = runFixture('special-directory-context.md', [], {crlf: true});
+	t.after(run.cleanup);
+	assertOk(run.result);
+	assert.equal(run.read('ctx/stripped.txt'), 'prefix `stripped` ${HOME} \\n\n');
+	assert.equal(run.read('ctx/sub/relative.txt'), 'relative to `ctx` ${HOME} \\n\n');
+	assert.equal(run.read('ctx/here.txt'), 'in ctx ctx ok\n');
+});
+
+test('--cwd applies to bash blocks and file extraction', (t) => {
+	const run = runFixture('special-directory-context.md', ['--cwd', 'work'], {setup: (dir) => mkdirSync(join(dir, 'work'))});
+	t.after(run.cleanup);
+	assertOk(run.result);
+	assert.equal(run.read('work/ctx/stripped.txt'), 'prefix `stripped` ${HOME} \\n\n');
+	assert.equal(run.read('work/ctx/sub/relative.txt'), 'relative to `ctx` ${HOME} \\n\n');
+	assert.equal(run.read('work/ctx/here.txt'), 'in ctx ctx ok\n');
+	assert.equal(run.exists('ctx'), false);
+});
+
+test('blocks inside list items keep special characters', (t) => {
+	const run = runFixture('list-items.md');
+	t.after(run.cleanup);
+	assertOk(run.result);
+	assert.equal(run.read('list-out.txt'), 'list sub home back\\slash\n' + 'second \\n\n');
+});
+
+test('--standalone writes .npmrc in the directory context', (t) => {
+	const run = runFixture('behaviours.md', ['--standalone']);
+	t.after(run.cleanup);
+	assertOk(run.result);
+	assert.match(run.read('proj/.npmrc'), /^shamefully-hoist=false$/m);
+	assert.equal(run.read('proj/where.txt'), 'proj\n');
 });
 
 test('bash blocks do not depend on zx escaping (or not) its own bash fences', (t) => {
