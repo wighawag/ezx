@@ -50,7 +50,7 @@ echo "We're still in my-project!"
 pwd
 ```
 
-**Note:** The directory context also affects file extraction blocks. Files created after `# set the current directory` will have their paths relative to the original directory, but the command will prepend `cd` to create them in the correct location.
+**Note:** The directory context also affects file extraction blocks. After `# set the current directory`, a `file:` path that starts with the context directory (e.g. `my-project/package.json`) is written to that location, and any other relative path is resolved inside the context directory.
 
 ### 3. File Extraction
 
@@ -125,21 +125,20 @@ interface User {
 ```⁠
 ```
 
-File extraction blocks are transformed to bash heredoc commands that execute in order with the rest of the markdown. If a directory context is active, the heredoc command will prepend `cd`:
+File extraction blocks are transformed into JavaScript blocks that write the file with `fs`, executing in order with the rest of the markdown. The path and the content are embedded as JSON strings, so the file receives the block's text byte for byte (backticks, `${...}`, backslashes and all), followed by a final newline. Leading and trailing whitespace of the block is trimmed, as before.
 
-```bash
-# Without directory context:
-cat > 'path/to/file' << 'EZXEOF'
-content here
-EZXEOF
+```js
+// Without directory context: relative to the working directory (--cwd, else the current directory)
+fs.writeFileSync(path.resolve($.cwd || process.cwd(), "path/to/file"), "content here\n");
 
-# With directory context (after "# set the current directory my-project"):
-cd my-project && cat > 'path/to/file' << 'EZXEOF'
-content here
-EZXEOF
+// With directory context (after "# set the current directory" + "cd my-project"):
+// the directory is resolved by the shell, so it means what `cd my-project` means in bash blocks
+fs.writeFileSync(path.resolve((await $`cd my-project && pwd`.quiet()).stdout.replace(/\n$/, ''), "path/to/file"), "content here\n");
 ```
 
-This means if a parent directory doesn't exist, the command will fail (as expected). You should create directories first using `mkdir -p` in a bash block.
+With a directory context, a path that starts with the context directory (`my-project/path/to/file`) has that prefix stripped; any other relative path is resolved inside the context directory.
+
+Parent directories are not created: if one doesn't exist, the write fails and the script stops (as expected). Create directories first using `mkdir -p` in a bash block.
 
 ### 4. Async Bash Execution
 
@@ -188,6 +187,8 @@ curl http://localhost:3000
 $`npm run dev`
 ```
 
+The lines of the block are joined with `; ` into a single command (empty lines and lines starting with `#` are dropped), and the command is escaped for the template literal, so the shell receives it unchanged (see [Special characters](#5-special-characters-are-passed-through-unchanged)).
+
 The command runs without `await`, so execution continues immediately. zx automatically awaits all pending promises at the end of the script.
 
 **Kill on Complete:** Use the `--kill-on-complete` (or `-k`) CLI option to kill all async processes when the script completes, instead of waiting for them:
@@ -200,6 +201,24 @@ ezx -k script.md
 This is useful for development servers or other long-running processes that should be terminated after the script runs.
 
 **Important:** The `async:` directive only works with bash/sh/shell blocks. Using it with other languages will result in an error.
+
+### 5. Special characters are passed through unchanged
+
+zx runs a `bash`/`sh`/`shell` block by pasting its lines between the backticks of a JavaScript template literal (`` await $`...` ``) without escaping them. In plain zx, a backtick in the block therefore ends the command early (the script fails to parse), `${x}` is evaluated as JavaScript instead of reaching the shell, and backslash sequences such as `\n` are turned into the characters they denote.
+
+ezx guarantees that the text of a block reaches its destination unchanged:
+
+- **Bash blocks and `async:` blocks:** ezx escapes `\`, `` ` `` and `${` for the template literal, so the shell receives exactly what is written in the Markdown. `` `cmd` `` is a shell command substitution, `${VAR}` is a shell expansion, and `\n` is a backslash followed by `n`, as in any shell script.
+- **`file:` blocks:** the file is written with `fs` from a JSON-encoded string, without going through a shell, so any content can be extracted, including TypeScript template literal types such as `` `0x${string}` ``, comments with backticks, backslashes, and a line reading `EZXEOF`.
+
+This means a bash block can no longer use `${...}` to interpolate a JavaScript value, which in zx happened by accident of the transformation. Use a `js` block with `` $`...` `` when you need that.
+
+### Known pitfalls
+
+- **zx executes `js`, `javascript`, `ts` and `typescript` blocks.** zx runs every block tagged exactly `js`, `javascript`, `ts` or `typescript` as JavaScript (TypeScript blocks are not type-stripped). A TypeScript snippet shown for documentation, that is not a `file:` block, usually crashes the script with a syntax error. Mark such blocks so zx ignores them, by adding any word after the language (`` ```ts no-eval ``) or by using a tag zx does not run (`` ```tsx ``, `` ```TypeScript ``). Blocks with any other language (`json`, `text`, `solidity`, ...) are never executed.
+- **Only exact fence tags run.** A bash block runs only when its tag is exactly `bash`, `sh` or `shell` after ezx removes `sleep:N` and `[label]` modifiers. Any other word after the language (`` ```bash skip ``) makes zx ignore the block.
+- **`--preprocess-only` shows zx's input.** The printed Markdown is what ezx hands to zx, so bash block bodies appear with their backticks, `${` and backslashes escaped, and `file:` blocks appear as `js` blocks calling `fs.writeFileSync`.
+- **Multi-line `async:` blocks become one line.** Their lines are joined with `; `, so constructs that span lines (heredocs, `if`/`fi` written over several lines with comments) may not work in an `async:` block.
 
 ## Installation
 
@@ -368,7 +387,7 @@ Preprocess markdown content.
   - `cwd` (string) - Current working directory (default: `process.cwd()`)
 
 **Returns:** PreprocessResult
-- `preprocessedMarkdown` (string) - The preprocessed markdown with file directive blocks transformed to bash heredocs
+- `preprocessedMarkdown` (string) - The preprocessed markdown, ready for zx: file directive blocks are transformed into `js` blocks that write the file, and bash block bodies are escaped for zx's template literal
 - `extractedFiles` (FileExtraction[]) - Array of extracted file information (for informational purposes only)
 
 ### `preprocessFile(filePath, options)`
@@ -387,8 +406,8 @@ npm run build
 # Watch mode
 npm run dev
 
-# Run tests
-node dist/cli.js test-preprocessor.md --verbose
+# Run tests (builds first, then runs test/*.test.mjs with node --test)
+npm test
 ```
 
 ## License

@@ -39,9 +39,9 @@ export interface PreprocessResult {
 }
 
 /**
- * Information about a block that will be transformed to a heredoc
+ * Information about a block that will be transformed into a file write
  */
-interface HeredocTransform {
+interface FileWriteTransform {
 	filePath: string;
 	content: string;
 	directoryPrefix?: string; // Optional cd prefix for unified directory context
@@ -107,6 +107,58 @@ export function sanitizeMarkdownForZx(markdown: string): string {
 	processTokens(tokens);
 
 	return output.join('\n');
+}
+
+/**
+ * Escape text so that it survives being placed between the backticks of a
+ * JavaScript template literal and comes out unchanged.
+ *
+ * zx's `transformMarkdown` turns every bash/sh/shell block into
+ * `await $\`` + raw lines + `\``, and zx builds the command from the template's
+ * COOKED strings (`buildCmd` concatenates `pieces[0]`, `pieces[1]`, ... and never
+ * reads `pieces.raw`). So the only characters that need escaping are the ones a
+ * template literal interprets: `\` (escape sequences), a backtick (end of the
+ * literal) and `${` (substitution). A lone carriage return would be normalised
+ * to a line feed, so it is written as the `\r` escape sequence.
+ */
+export function escapeForZxTemplate(text: string): string {
+	return text
+		.replace(/\\/g, '\\\\')
+		.replace(/`/g, '\\`')
+		.replace(/\$\{/g, '\\${')
+		.replace(/\r/g, '\\r');
+}
+
+/**
+ * Whether zx will execute a fenced block with this info string as a shell command.
+ * Mirrors zx's own fence regex: only an info string that is exactly `sh`, `shell`
+ * or `bash` (case-sensitive) runs; anything else (`bash skip`, `BASH`, ...) is
+ * turned into comments by zx and must be left untouched.
+ */
+function zxRunsAsBash(languageTag: string): boolean {
+	return /^(sh|shell|bash)$/.test(languageTag);
+}
+
+/**
+ * Build the JavaScript statement that writes an extracted file.
+ *
+ * The path and the content are JSON-encoded, so no character in the file can be
+ * interpreted by JavaScript or by a shell. Relative paths resolve against zx's
+ * working directory (`$.cwd`, else `process.cwd()`), like the shell commands.
+ * Parent directories are NOT created: writing into a missing directory fails,
+ * as the former `cat > file` heredoc did.
+ *
+ * With a directory context, the directory is resolved by the shell itself
+ * (`cd <dir> && pwd`), so `~`, quotes and variables in the `cd` target keep
+ * meaning what they mean in the bash blocks.
+ */
+function buildFileWriteStatement(filePath: string, content: string, directoryPrefix?: string): string {
+	let base = '$.cwd || process.cwd()';
+	if (directoryPrefix) {
+		const cdCommand = escapeForZxTemplate(`cd ${directoryPrefix} && pwd`);
+		base = `(await $\`${cdCommand}\`.quiet()).stdout.replace(/\\n$/, '')`;
+	}
+	return `fs.writeFileSync(path.resolve(${base}, ${JSON.stringify(filePath)}), ${JSON.stringify(content + '\n')});`;
 }
 
 /**
@@ -305,8 +357,8 @@ export function preprocessMarkdown(
 
 	// Map of block indices to transformations (prepend cd)
 	const blocksToTransform: Map<number, string> = new Map();
-	// Map of block indices to transform to heredoc
-	const blocksToHeredoc: Map<number, HeredocTransform> = new Map();
+	// Map of block indices to transform into a file write
+	const blocksToFileWrite: Map<number, FileWriteTransform> = new Map();
 	// Map of block indices to transform to async JS
 	const blocksToAsync: Map<number, AsyncTransform> = new Map();
 	// Track where we need to insert .npmrc after directory set
@@ -330,7 +382,7 @@ export function preprocessMarkdown(
 
 		// Check if this is a file extraction block (file path from file: directive)
 		if (block.filePath) {
-			// This is a file extraction block - transform to heredoc
+			// This is a file extraction block - transform into a file write
 			const fileContent = block.content.trim();
 			extractedFiles.push({
 				filePath: block.filePath,
@@ -338,9 +390,9 @@ export function preprocessMarkdown(
 				language: block.language,
 			});
 
-			// Mark this block for transformation to heredoc
-			// If we have a current directory, prepend it to the heredoc command
-			blocksToHeredoc.set(i, {
+			// Mark this block for transformation into a file write
+			// If we have a current directory, the path is resolved inside it
+			blocksToFileWrite.set(i, {
 				filePath: block.filePath,
 				content: fileContent,
 				directoryPrefix: currentDirectory || undefined,
@@ -445,8 +497,8 @@ export function preprocessMarkdown(
 						command = `cd ${asyncBlock.directoryPrefix} && ${command}`;
 					}
 					
-					// Escape backticks in the command for the template literal
-					const escapedCommand = command.replace(/`/g, '\\`');
+					// Escape the command for the template literal so the shell receives it unchanged
+					const escapedCommand = escapeForZxTemplate(command);
 					
 					// Output the $ template literal (fire-and-forget, no await)
 					// If killOnComplete is enabled, push to tracking array so we can kill it later
@@ -465,25 +517,20 @@ export function preprocessMarkdown(
 					continue;
 				}
 
-				// Check if this block should be transformed to heredoc
-				if (blocksToHeredoc.has(blockIndex)) {
-					const heredoc = blocksToHeredoc.get(blockIndex)!;
-					// Transform to bash heredoc block
-					preprocessedLines.push('```bash');
-					// If we have a directory prefix, prepend cd && to the cat command
-					// Also strip the directory prefix from the file path if it matches
-					let catPath = heredoc.filePath;
-					if (heredoc.directoryPrefix) {
-						// Remove the directory prefix from the file path if it starts with it
-						if (catPath.startsWith(heredoc.directoryPrefix + '/')) {
-							catPath = catPath.slice(heredoc.directoryPrefix.length + 1);
-						}
-						preprocessedLines.push(`cd ${heredoc.directoryPrefix} && cat > '${catPath}' << 'EZXEOF'`);
-					} else {
-						preprocessedLines.push(`cat > '${catPath}' << 'EZXEOF'`);
+				// Check if this block should be transformed into a file write
+				if (blocksToFileWrite.has(blockIndex)) {
+					const fileWrite = blocksToFileWrite.get(blockIndex)!;
+					// Transform to a JS block that writes the file with fs.
+					// Not a bash heredoc: zx would place the heredoc inside a template
+					// literal, where backticks and ${ in the content break the script.
+					preprocessedLines.push('```js');
+					// With a directory context, the path is relative to the context directory,
+					// unless it starts with that directory, in which case the prefix is stripped
+					let targetPath = fileWrite.filePath;
+					if (fileWrite.directoryPrefix && targetPath.startsWith(fileWrite.directoryPrefix + '/')) {
+						targetPath = targetPath.slice(fileWrite.directoryPrefix.length + 1);
 					}
-					preprocessedLines.push(heredoc.content);
-					preprocessedLines.push('EZXEOF');
+					preprocessedLines.push(buildFileWriteStatement(targetPath, fileWrite.content, fileWrite.directoryPrefix));
 					preprocessedLines.push('```');
 					// Skip to the closing ```
 					i = block.endLine;
@@ -497,32 +544,42 @@ export function preprocessMarkdown(
 				const { languageTag } = parseLanguageTag(origFullTag);
 				preprocessedLines.push(`\`\`\`${languageTag}`);
 
+				const bodyLines: string[] = [];
+
 				// Check if we need to prepend sleep command (only for bash blocks)
 				if (block.sleepSeconds && isBashLanguage(block.language)) {
-					preprocessedLines.push(`sleep ${block.sleepSeconds}`);
+					bodyLines.push(`sleep ${block.sleepSeconds}`);
 				}
 
 				// Check if we need to prepend cd command
 				if (blocksToTransform.has(blockIndex)) {
 					const dir = blocksToTransform.get(blockIndex)!;
-					preprocessedLines.push(`cd ${dir}`);
+					bodyLines.push(`cd ${dir}`);
 				}
 
 				// Output the block content
 				if (block.content) {
-					preprocessedLines.push(block.content);
+					bodyLines.push(block.content);
 				}
 
 				// If standalone mode is enabled and this block set the directory, append .npmrc creation
 				if (npmrcInsertBlocks.has(blockIndex)) {
-					preprocessedLines.push('');
-					preprocessedLines.push('cat > .npmrc << \'EZXEOF\'');
-					preprocessedLines.push('# Disable workspace awareness for test project');
-					preprocessedLines.push('# This ensures that pnpm install and other commands work in standalone mode');
-					preprocessedLines.push('enable-pre-post-scripts=true');
-					preprocessedLines.push('shamefully-hoist=false');
-					preprocessedLines.push('strict-peer-dependencies=false');
-					preprocessedLines.push('EZXEOF');
+					bodyLines.push('');
+					bodyLines.push('cat > .npmrc << \'EZXEOF\'');
+					bodyLines.push('# Disable workspace awareness for test project');
+					bodyLines.push('# This ensures that pnpm install and other commands work in standalone mode');
+					bodyLines.push('enable-pre-post-scripts=true');
+					bodyLines.push('shamefully-hoist=false');
+					bodyLines.push('strict-peer-dependencies=false');
+					bodyLines.push('EZXEOF');
+				}
+
+				if (bodyLines.length > 0) {
+					const body = bodyLines.join('\n');
+					// zx pastes a bash block's lines verbatim between the backticks of
+					// `await $\`...\``, so escape them for that template literal: the shell
+					// then receives exactly the text written in the Markdown.
+					preprocessedLines.push(zxRunsAsBash(languageTag) ? escapeForZxTemplate(body) : body);
 				}
 
 				// Skip to the closing ```

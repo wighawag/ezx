@@ -63,6 +63,7 @@
 	},
 	"scripts": {
 		"build": "tsc --project tsconfig.json",
-		"dev": "as-soon -w src pnpm build"
+		"dev": "as-soon -w src pnpm build",
+		"test": "pnpm build && node --test test/*.test.mjs"
 	}
 }
