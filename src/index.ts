@@ -117,11 +117,17 @@ export async function runMarkdown(markdown: string | Buffer, options: RunMarkdow
 		}
 
 		// Preprocess markdown with ezx enhancements
-		const {preprocessedMarkdown, hasAsyncBlocks} = preprocessMarkdown(markdownContent, {
+		const {preprocessedMarkdown, hasAsyncBlocks, warnings} = preprocessMarkdown(markdownContent, {
 			cwd: options.cwd || process.cwd(),
 			standalone: options.standalone,
 			killOnComplete: options.killOnComplete,
 		});
+
+		if (!options.quiet) {
+			for (const warning of warnings) {
+				console.warn(warning);
+			}
+		}
 
 		// Sanitize markdown to prevent zx from misinterpreting indented prose as code
 		// This handles edge cases like indented code blocks within list items

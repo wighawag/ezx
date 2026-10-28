@@ -103,12 +103,11 @@ Use the `file:` directive in a blockquote to create files:
 
 > ⚠️ **Breaking Change**: The `file:` prefix is now required. The old syntax `> `filename`` no longer works.
 
-**Implementation:** Transformed to bash heredocs:
-```bash
-cat > 'package.json' << 'EZXEOF'
-{"name": "my-project"}
-EZXEOF
+**Implementation:** Transformed to a `js` block that writes the file with `fs` from JSON-encoded strings (no shell involved, so any content is written verbatim):
+```js
+fs.writeFileSync(path.resolve($.cwd || process.cwd(), "package.json"), "{\"name\": \"my-project\"}\n");
 ```
+With a directory context, the base directory is resolved by the shell (`cd <dir> && pwd`). Parent directories are not created.
 
 ### 4. Async Bash Execution
 
@@ -122,7 +121,7 @@ npm run dev
 ```⁠
 ```
 
-**Implementation:** Transformed to JavaScript with zx's `$` template (without await):
+**Implementation:** Transformed to JavaScript with zx's `$` template (without await), the command escaped with `escapeForZxTemplate()`:
 ```javascript
 $`npm run dev`
 ```
@@ -150,14 +149,19 @@ pnpm build
 # Watch mode
 pnpm dev
 
-# Test with markdown files
+# Automated tests (build, then node --test test/*.test.mjs)
+pnpm test
+
+# Manual runs with markdown files
 node dist/cli.js TEST.md --verbose
 node dist/cli.js TEST2.md --verbose
 ```
 
 ## Testing
 
-Test files in the project root:
+`pnpm test` runs `test/cli.test.mjs`, which executes the built CLI on the fixtures in `test/fixtures/` inside a temporary directory and checks the files written. Add a fixture and a test there for every behaviour change.
+
+Manual test files in the project root:
 
 | File | Tests |
 |------|-------|
@@ -177,9 +181,9 @@ This function is critical - it uses `marked.Lexer.lex()` to parse markdown and:
 
 This ensures zx's regex parser won't misinterpret content.
 
-### Heredoc EOF Marker
+### Escaping for zx's template literal
 
-Uses `EZXEOF` as the heredoc delimiter for file extraction. This is chosen to be unlikely to appear in file content.
+zx's `transformMarkdown` turns a bash/sh/shell block into `` await $` `` + the raw lines + `` ` `` with no escaping, and zx builds the command from the template's cooked strings. ezx therefore never leaves an executed bash fence to zx: it emits a `js` block with its own `` await $` `` + `escapeForZxTemplate(body)` + `` ` `` (escapes `\`, `` ` ``, `${` and lone `\r`), and does the same for `async:` commands. This also keeps ezx correct if zx starts escaping bash fences itself (google/zx#1529), which would otherwise double-escape. Blocks containing `\${` or `` \` `` get a migration warning (`PreprocessResult.warnings`). Known gap: `parseCodeBlocks` only recognises backtick fences, so a `~~~bash` block bypasses all of this and reaches zx raw (documented in the README). `preprocessMarkdown` normalises CRLF and lone CR to LF first. Do not emit file content through a shell: `file:` blocks use `fs.writeFileSync` with `JSON.stringify`. Only the `.npmrc` written by `--standalone` still uses a heredoc with the `EZXEOF` delimiter (fixed content).
 
 ### Directory Context Handling
 
